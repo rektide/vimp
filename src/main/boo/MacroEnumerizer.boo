@@ -91,12 +91,12 @@ class MacroEnumerizer:
 	callable NameMangleDelegate(input as string) as string
 
 	[Property(EnumNameMangler)] nameMangler as NameMangleDelegate
-	[Property(EnumNemberMangler)] memberMangler as NameMangleDelegate
+	[Property(EnumMemberMangler)] memberMangler as NameMangleDelegate
 	
 	[Property(EnumMap)] enumMap = HashDictionary[of string,string]()
 	""" maps from a macro prefix to a enum name """
 
-	def BuildEnums(file as string, ns as string):
+	def BuildEnums(file as string, ns as string) as Module:
 		enums = HashDictionary[of string,EnumDefinition]()
 		
 		# parse enums out of file
@@ -138,6 +138,7 @@ class MacroEnumerizer:
 						enumMember.Name = enumMemberName
 						
 						enumDefinition.Members.Add(enumMember)
+						break
 					except:
 						pass
 		ensure:
