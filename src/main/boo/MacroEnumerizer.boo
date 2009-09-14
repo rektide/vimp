@@ -83,8 +83,8 @@ class MacroEnumerizer:
 	def constructor():
 		pass
 
-	objectParse = @/#define\s+(\S)(?:\s+(.*))?$/
-	objectNameClean = @/^\W+/
+	objectParse = @/^#define\s+([\w_]+)\s+(.*)$/
+	objectNameClean = @/^[_\W]+/
 
 	intParser = IntegerLiteralParser()
 	
@@ -104,24 +104,35 @@ class MacroEnumerizer:
 		try:
 			while sr.Peek() >= 0:
 				line = objectParse.Match(sr.ReadLine())
-				objName = line.Captures[0].Value
-				objValue = null
-				objValue = line.Captures[1].Value if line.Captures.Count > 1
+				continue if line.Groups.Count < 3
+				objName = line.Groups[1].Value
+				objValue = line.Groups[2].Value 
 				for key in enumMap.Keys:
 					continue if not objName.StartsWith(key)
 					try:
-						enumMemberName = objName[-key.Length:]
+						enumMemberName = objName[key.Length:]
 						enumMemberName = objectNameClean.Replace(enumMemberName, "")
-						enumMemberName = memberMangler(enumMemberName) if memberMangler
+						if memberMangler:
+							try:
+								proposed = memberMangler(enumMemberName)
+								print "mangle [${enumMemberName}] to [${proposed}]" if proposed
+								enumMemberName = proposed if proposed
+							except ex:
+								pass
+						#print "name ${objName} ${enumMemberName} ${key} ${key.Length}" 
 						
 						enumName = key
 						enumName = nameMangler(enumName) if nameMangler
+						try:
+							enumName = enumMap[enumName]
+						except:
+							pass
 						enumDefinition as EnumDefinition
 						#right way to do it, but crazy unhandleable ambiguous overload insanity in C5:
 						#enums.Find(enumName, enumDefinition)
 						try:
 							enumDefinition = enums[enumName]
-						except:
+						except noSuch as NoSuchItemException:
 							pass
 						if not enumDefinition:	
 							enumDefinition = EnumDefinition()
@@ -136,17 +147,22 @@ class MacroEnumerizer:
 						except InvalidCastException:
 							enumMember = EnumMember()
 						enumMember.Name = enumMemberName
-						
+				
+						print "Adding [${enumMember}, ${enumVal}] to [${enumName}] from raw [${objName},${objValue}]"
+								
 						enumDefinition.Members.Add(enumMember)
 						break
 					except:
 						pass
+		except ex:
+			print "Loop exception;", ex
 		ensure:
 			sr.Close()
 		
 		# render enums into assembly
 		mod = Module()
 		mod.Namespace = NamespaceDeclaration(ns)
+		
 		for member in enums:
 			mod.Members.Add(member.Value)
 		return mod

@@ -1,10 +1,13 @@
 namespace VoodooWarez.Min
 
+import Boo.Lang.Compiler.MetaProgramming
+
 import C5
 
 import System
 import System.IO
 import System.Text
+import System.Reflection.Emit
 
 import VoodooWarez.Utils
 
@@ -31,20 +34,31 @@ enm["MT_TOOL"] = "MtToolEnum"
 enm["FF_STATUS"] = "FfStatusEnum"
 enm["FF_EFFECT"] = "FfEffectEnum"
 enm["FF"] = "FfEffectEnum"
-m.EnumNameMangler = def(inp as string):
-	outp as string
-	try:
-		return enm[inp]
-	except:
-		pass
-	return inp
+m.EnumMap = enm
 
 # camel case members
-m.EnumMemberMangler = def(inp as string):
+m.EnumMemberMangler = def(inp as string) as string:
 	inpv = inp.Split(char('_'))
 	sb = StringBuilder()
 	for e in inpv:
 		sb.Append( char.ToUpper(e[0]) + e[1:].ToLower() )
+	outp = sb.ToString()
+	try:
+		Int32.Parse(outp)
+		return "Num"+outp
+	except 	FormatException:
+		pass
+	return outp
 	
-	
-m.BuildEnums(argv[1], argv[0])
+
+if argv.Length != 3:
+	print "InputMacroEnumerizer namespace input.{h,c} output.dll"
+	return
+module = m.BuildEnums(argv[1], argv[0])
+asmName = argv[2]
+asmName = asmName.Substring(0,asmName.LastIndexOf(char('.')))
+module.Name = asmName
+print "hic", argv[1], "|", argv[2], module
+print module.Members.Count
+asmB = compile(module) as AssemblyBuilder
+asmB.Save(argv[2])
