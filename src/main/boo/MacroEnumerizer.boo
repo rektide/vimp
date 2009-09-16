@@ -57,7 +57,7 @@ class IntegerLiteralParser(SuffixedParser,IConverter[of string,Int64]):
 			failure:
 				pass
 		try:
-			return System.Convert.ToInt64(inp)
+			return Int64.Parse(inp)
 		failure:
 			pass
 		raise InvalidCastException()
@@ -115,11 +115,9 @@ class MacroEnumerizer:
 						if memberMangler:
 							try:
 								proposed = memberMangler(enumMemberName)
-								print "mangle [${enumMemberName}] to [${proposed}]" if proposed
 								enumMemberName = proposed if proposed
 							except ex:
 								pass
-						#print "name ${objName} ${enumMemberName} ${key} ${key.Length}" 
 						
 						enumName = key
 						enumName = nameMangler(enumName) if nameMangler
@@ -145,7 +143,9 @@ class MacroEnumerizer:
 							enumVal = intParser.Convert(objValue)
 							enumMember = EnumMember(IntegerLiteralExpression(enumVal))
 						except InvalidCastException:
-							enumMember = EnumMember()
+							#enumMember = EnumMember()
+							print "Ignoring [${enumMember}] in [${enumName}] from [${objName},${objValue}], for it has no value."
+							break
 						enumMember.Name = enumMemberName
 				
 						print "Adding [${enumMember}, ${enumVal}] to [${enumName}] from raw [${objName},${objValue}]"
