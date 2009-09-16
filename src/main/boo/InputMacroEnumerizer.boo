@@ -33,21 +33,24 @@ enm["BUS"] = "BusEnum"
 enm["MT_TOOL"] = "MtToolEnum"
 enm["FF_STATUS"] = "FfStatusEnum"
 enm["FF_EFFECT"] = "FfEffectEnum"
-enm["FF"] = "FfEffectEnum"
+enm["FF"] = "FfEnum"
 m.EnumMap = enm
 
 # camel case members
 m.EnumMemberMangler = def(inp as string) as string:
+	# CamelCase
 	inpv = inp.Split(char('_'))
 	sb = StringBuilder()
 	for e in inpv:
 		sb.Append( char.ToUpper(e[0]) + e[1:].ToLower() )
 	outp = sb.ToString()
+	# prefix numbers with Num
 	try:
-		Int32.Parse(outp)
+		Int32.Parse(outp[0].ToString())
 		return "Num"+outp
 	except 	FormatException:
 		pass
+	#
 	return outp
 	
 
@@ -58,7 +61,5 @@ module = m.BuildEnums(argv[1], argv[0])
 asmName = argv[2]
 asmName = asmName.Substring(0,asmName.LastIndexOf(char('.')))
 module.Name = asmName
-print "hic", argv[1], "|", argv[2], module
-print module.Members.Count
 asmB = compile(module) as AssemblyBuilder
 asmB.Save(argv[2])
