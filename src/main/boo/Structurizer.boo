@@ -2,6 +2,7 @@ namespace VoodooWarez.Systems
 
 import Boo.Lang.Compiler.Ast
 import C5
+import System.Text
 import System.Xml
 
 callable NameMangleDelegate(input as string) as string
@@ -58,6 +59,12 @@ def TraceMangler(inp):
 	print "Trace mangler, value: ${inp}"
 	return
 
+[Extension]
+def AttrValue(el as XmlElement, attr as string) as string:
+	atNode = el.Attributes[attr]
+	return null if not atNode
+	return atNode.Value
+
 class Structurizer:
 
 	enum ElementType:
@@ -81,17 +88,20 @@ class Structurizer:
 	rs as XmlElement
 	fs as (string)
 
+	needed as IQueue[of string]
+
 	def constructor():
 		layout = Attribute("StructLayout")
 		seq = MemberReferenceExpression(ReferenceExpression("LayoutKind"),"Sequential")
 		layout.Arguments.Add(seq)
-
+	
 	def DoDocument(ast as XmlElement, *types as (string)):
 		tu = ast["TranslationUnit"]
 		rs = ast["ReferenceSection"]
-		
+		needed = LinkedList[of string]()
+
 		FindInputFiles()
-		mod = BuildModule(ast,*types)
+		mod = BuildModule(*types)
 		return mod
 
 	private def FindInputFiles():
@@ -106,7 +116,7 @@ class Structurizer:
 			fsl.Add(f.Attributes["id"].Value)
 		fs = fsl.ToArray(string)
 	
-	private def BuildModule (ast as XmlElement, *types as (string)):
+	private def BuildModule (*types as (string)):
 		mod = Module()
 		for entry as XmlElement in tu.ChildNodes:
 			name = entry.Attributes["name"].Value
@@ -116,7 +126,7 @@ class Structurizer:
 				continue if not Contains[of string](types,name) and not Contains[of string](types,typeName)
 			else:	
 				file = entry.Attributes["file"]
-				continue if not file or not Contains[of string](fs,entry.Attributes["file"].Value)
+				#continue if not file or not Contains[of string](fs,entry.Attributes["file"].Value)
 		
 			if entry.Name == "Record":
 				print "found ${typeName}"
@@ -124,14 +134,12 @@ class Structurizer:
 				target.Name = typeName
 				target.Attributes.Add( layout )
 				for field as XmlElement in entry.ChildNodes:
-					fieldType = ResolveFieldType(field)
-					fieldName = MangleFieldName( field.Attributes["name"].Value ) as string
-					fieldMem = Field( SimpleTypeReference(fieldType), null )
-					fieldMem.Name = fieldName
-					target.Members.Add( fieldMem )
+					fieldMember = BuildField( field )
+					target.Members.Add( fieldMember ) if fieldMember
 				mod.Members.Add(target)
 			else:
-				print "Unhandled construct [${entry.Name}, id: ${entry.Attributes['id'].Value}, type: ${entry.Attributes['type'].Value}]."
+				pass
+				#print "Unhandled construct [${entry.Name}, id: ${entry.Attributes['id'].Value}, type: ${entry.Attributes['type'].Value}]."
 			
 			#elif entry.Name == "Typedef"
 			#	pass
@@ -141,18 +149,66 @@ class Structurizer:
 			#	pass
 		return mod
 
-	def ResolveFieldType(field as XmlElement) as string:
-		el = rs["Types"].SelectSingleNode("*[@id = \"${field.Attributes['type'].Value}\"]")
-		result as string
+	def BuildField(field as XmlElement) as Field:
+		rt = rs["Types"]
+		
+		fieldName = MangleFieldName( field.AttrValue("name") ) as string
+		if not fieldName:
+			print "   Whoa field has no name! [${ReadoutElement(field)}]"
+			return null
+		
+		el = rt.SelectSingleNode("*[@id = \"${field.AttrValue('type')}\"]") as XmlElement
+		if not el:
+			print "   Whoa field type has no resolveable reference!  [${ReadoutElement(field)}]"
+			return null
+		
+		# advanced lookup, not always needed or used.	
+		target as XmlElement
+		targetAttr = el.Attributes['type']
+		if targetAttr:
+			target = rt.SelectSingleNode("*[@id = \"${targetAttr.Value}\"]")
+		
+		fieldType as string
+		verbose = false
+		extra = ""
 		if el.Name == "Record":
-			result = el.Attributes["name"].Value
+			fieldType = el.AttrValue("name")
 		elif el.Name == "FundamentalType":
-			result = el.Attributes["kind"].Value
+			fieldType = el.AttrValue("kind")
+		elif el.Name == "Typedef":
+			fieldType = "Int64"
+			verbose = true
 		else:
-			print "Unhandled field resolve ${el.Name}"
-			return "Int32"
-		return MangleTypeName(result)
-
+			print "   Unhandled ${el.Name} resolve. [name: ${field.Attributes['name'].Value}]"
+			fieldType = "Int32"
+		
+		if not fieldType:
+			verbose = true
+			extra += "[no fieldname]" 
+			
+		if verbose:
+			sb = StringBuilder()
+			if extra:
+				sb.Append(extra)
+				sb.Append(" ") 
+			sb.Append("[field ")
+			sb.Append(ReadoutElement(field))
+			if el:
+				sb.Append("] [el ") if el
+				sb.Append(ReadoutElement(el)) if el
+			if target:
+				sb.Append("] [target ") if target
+				sb.Append(target.Name) if target
+				sb.Append(" ") if target
+				sb.Append(ReadoutElement(target)) if target
+			sb.Append("].")
+			print "   Resolve ${el.Name} ${fieldType} ${sb.ToString()}" 
+			
+		fieldType = MangleTypeName(fieldType)
+		fieldMember = Field( SimpleTypeReference(fieldType), null )
+		fieldMember.Name = fieldName
+		return fieldMember
+		
 		#elif el.Name == "Typedef":
 		#	pass
 		#elif el.Name == "PointerType":
@@ -164,6 +220,17 @@ class Structurizer:
 		#elif el.Name == "FunctionType":
 		#	pass
 
+	private def ReadoutElement(roel as XmlElement):
+		sb = StringBuilder()
+		for val in ("name","id","type","kind"):
+			tmp = roel.AttrValue(val)
+			continue if not tmp
+			sb.Append(val)
+			sb.Append(":")
+			sb.Append(tmp)
+			sb.Append(" ")
+		sb.Remove(sb.Length-1,1)
+		return sb.ToString()
 
 doc = XmlDocument()
 doc.Load(argv[0])
@@ -171,4 +238,4 @@ doc.Load(argv[0])
 s = Structurizer()
 mod = s.DoDocument(doc.DocumentElement)
 mod.Name = "demoOne"
-print mod.ToCodeString()
+#print mod.ToCodeString()
