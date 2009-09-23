@@ -1,7 +1,11 @@
 namespace VoodooWarez.Systems
 
 import Boo.Lang.Compiler.Ast
+import Boo.Lang.Compiler.MetaProgramming
 import C5
+import System
+import System.Reflection.Emit
+import System.Runtime.InteropServices
 import System.Text
 import System.Text.RegularExpressions
 import System.Xml
@@ -42,11 +46,11 @@ def DelegateMangler(mangler as NameMangleDelegate):
 		return null if not mangler
 		return mangler(input)
 
-def NameMapMangler(map as IDictionary[of string,string]):
+def NameMapMangler(nmap as IDictionary[of string,string]):
 	return def(inp):
-		return null if not map
+		return null if not nmap
 		outp as string
-		Find2[of string,string](map, inp as string, outp)
+		Find2[of string,string](nmap, inp as string, outp)
 		return outp
 
 def MapMangler[of T(class)](map as IDictionary[of T,T]):
@@ -86,27 +90,44 @@ class Structurizer:
 		Function
 		Enum
 
-	layout as Attribute
-	
+	layout as Boo.Lang.Compiler.Ast.Attribute
+
+	[Property(TypeMap)]
+	typeMap as IDictionary[of string,string]
+	[Property(TypeMangle)]	
 	typeMangle as NameMangleDelegate
-	typeMap as HashDictionary[of string,string]
 	
+	[Property(FieldMangle)]
 	fieldMangle as NameMangleDelegate
 
-	MangleTypeName = JoinFunctions( DelegateMangler(typeMangle), RegexMangler(@/unsigned /,"u"), NameMapMangler(typeMap) )
-	MangleFieldName = JoinFunctions( DelegateMangler(fieldMangle) )
+	protected MangleTypeName as callable:
+		get: 
+			return JoinFunctions( DelegateMangler(typeMangle), RegexMangler(@/unsigned /,"u"), NameMapMangler(typeMap) )
+	protected MangleFieldName as callable:
+		get: 
+			return JoinFunctions( DelegateMangler(fieldMangle) )
+
+	[Property(NamespaceImports)]
+	namespaceImports as ICollection[of string]
 
 	# context
 	tu as XmlElement
 	rs as XmlElement
 	workingNameMap as IDictionary[of string,string]
-	needed as IQueue[of string]
+	needed as IList[of string]
 
 	def constructor():
-		layout = Attribute("StructLayout")
+		layout = Boo.Lang.Compiler.Ast.Attribute("StructLayout")
 		seq = MemberReferenceExpression(ReferenceExpression("LayoutKind"),"Sequential")
 		layout.Arguments.Add(seq)
-	
+		
+		typeMap = HashDictionary[of string,string]()
+		typeMap["char"] = "byte"
+		typeMap["uchar"] = "byte"
+
+		namespaceImports = ArrayList[of string]()	
+		namespaceImports.Add("System.Runtime.InteropServices")
+
 	def BuildModule(ast as XmlElement, *types as (string)):
 		tu = ast["TranslationUnit"]
 		rs = ast["ReferenceSection"]
@@ -114,7 +135,7 @@ class Structurizer:
 	
 		# initial types
 		for type in types:
-			needed.Enqueue(type)
+			EnsureNativeType(type)
 		BuildInitialNeeded() if needed.Count == 0
 	
 		# build name map
@@ -122,8 +143,9 @@ class Structurizer:
 	
 		# build module
 		mod = Module()
-		while needed.Count:
-			name = needed.Dequeue()
+		i = 0
+		while i < needed.Count: 
+			name = needed[i++]
 			
 			# lookup un-mangled names
 			vintageName as string
@@ -134,15 +156,24 @@ class Structurizer:
 			# find node
 			typeEl = tu.SelectSingleNode("*[@name = \"${name}]\" ${secondary}]") as XmlElement
 			if not typeEl:
-				print "    Whoa, type ${name} not found!"
+				print "   Whoa, type ${name} not found!"
+				
 				continue
 			
 			# choose unmangled name
 			name = MangleTypeName(name) if name == typeEl.AttrValue("name")
 			
 			# build
-			member = BuildMember(typeEl,name)
-			mod.Members.Add(member) if member
+			try:
+				member = BuildMember(typeEl,name)
+				mod.Members.Add(member) if member
+			except ex:
+				print "   [failed to build ${name}] ${ex}"
+		# add imports
+		for impStr in namespaceImports:
+			imp = Import()
+			imp.Namespace = impStr
+			mod.Imports.Add( imp )
 		return mod
 	
 	private def BuildInitialNeeded(*types as (string)):
@@ -159,16 +190,16 @@ class Structurizer:
 		# spool elements from the input files
 		fileQuery = fileQueryList.Join(" or ")
 		query = "*[@name][${fileQuery}]"
-		#query = "*[@name]"
+		query = "*[@name]"
 		els = tu.SelectNodes(query)
 		print "files [file count:${fileQueryList.Count}] [query:${fileQuery} type_count:${els.Count}]"
 		for el as XmlElement in els:
 			typeName = el.AttrValue("name")
 			if typeName:
-				print "adding ${typeName}"
-				needed.Enqueue( typeName ) 
+				#print "adding ${typeName}"
+				EnsureNativeType( typeName )
 			else:
-				print "    Missing typename [${ReadoutElement(el)}]" 
+				print "   Missing typename [${ReadoutElement(el)}]" 
 	
 	private def BuildWorkingNameMap():
 		workingNameMap = HashDictionary[of string,string]()
@@ -205,48 +236,35 @@ class Structurizer:
 		return result
 	
 	private def BuildField(field as XmlElement) as Field:
-		rt = rs["Types"]
-		
 		fieldName = MangleFieldName( field.AttrValue("name") ) as string
 		if not fieldName:
-			print "   Whoa field has no name! [${ReadoutElement(field)}]"
-			return null
-		
-		el = rt.SelectSingleNode("*[@id = \"${field.AttrValue('type')}\"]") as XmlElement
+			raise Exception("Whoa field has no name! [${ReadoutElement(field)}]")
+	
+		el = FetchTypeById(field.AttrValue('type'))
 		if not el:
-			print "   Whoa field type has no resolveable reference!  [${ReadoutElement(field)}]"
-			return null
+			raise Exception("Whoa field type has no resolveable reference!  [${ReadoutElement(field)}]")
 		
 		# advanced lookup, not always needed or used.	
 		target as XmlElement
-		targetAttr = el.Attributes['type']
-		if targetAttr:
-			target = rt.SelectSingleNode("*[@id = \"${targetAttr.Value}\"]")
+		targetId = el.AttrValue("type")
+		if targetId:
+			target = FetchTypeById(targetId)
 		
-		fieldType as string
+		fieldType as TypeReference	
+		fieldTypeName as string
+		attrs = List[of Boo.Lang.Compiler.Ast.Attribute]()
 		verbose = false
 		extra = ""
-		if el.Name == "Record":
-			fieldType = el.AttrValue("name")
-		elif el.Name == "FundamentalType":
-			fieldType = el.AttrValue("kind")
-		elif el.Name == "Typedef":
-			fieldType = "Int64"
-			targetKind = target.AttrValue("kind")
-			if target.Name == "FundamentalType" and targetKind:
-				fieldType = targetKind
-			else:
-				verbose = true
-		else:
-			print "   Unhandled ${el.Name} resolve. [name: ${field.Attributes['name'].Value}]"
-			fieldType = "Int32"
-		
-		if not fieldType:
-			verbose = true
-			extra += "[no fieldname]" 
-			
-		if verbose:
+
+		def DebugPrint():
 			sb = StringBuilder()
+			sb.Append("[Resolve ")
+			sb.Append(el.Name)
+			sb.Append(" ")
+			sb.Append(fieldTypeName) if fieldTypeName
+			sb.Append(fieldType.ToCodeString()) if not fieldTypeName and fieldType
+			sb.Append("null") if not fieldTypeName and not fieldType
+			sb.Append("] ")
 			if extra:
 				sb.Append(extra)
 				sb.Append(" ") 
@@ -261,17 +279,63 @@ class Structurizer:
 				sb.Append(" ") if target
 				sb.Append(ReadoutElement(target)) if target
 			sb.Append("].")
-			print "   Resolve ${el.Name} ${fieldType} ${sb.ToString()}" 
+			return sb.ToString()
+	
+		if el.Name == "Record":
+			fieldTypeName = el.AttrValue("name")
+		elif el.Name == "FundamentalType":
+			fieldTypeName = el.AttrValue("kind")
+		elif el.Name == "Typedef":
+			fieldTypeName = ResolveTypedefTarget(target)
+		elif el.Name == "PointerType":
+			fieldTypeName = "object"
+		elif el.Name == "ArrayType":
+			verbose = true
+	
+			sizeConst = Int32.Parse(el.AttrValue("size"))
+			marshalAttr = BuildMarshalAs( sizeConst )	
+			attrs.Add( marshalAttr )
 			
-		fieldType = MangleTypeName(fieldType)
-		fieldMember = Field( SimpleTypeReference(fieldType), null )
+			arrType as TypeReference
+			if target.Name == "FundamentalType":
+				arrTypeName = target.AttrValue("kind")
+			elif target.Name == "Record":
+				arrTypeName = target.AttrValue("name")
+			elif target.Name == "Typedef":
+				type2 = target.AttrValue("type")
+				raise Exception("Invalid typedef type for array. ${DebugPrint()}") if not type2
+				target2 = FetchTypeById(type2) as XmlElement
+				arrTypeName = ResolveTypedefTarget(target2)
+			
+			if not arrTypeName:
+				raise Exception("ArrayType cannot discern type. ${DebugPrint()}")
+		
+			arrTypeName = MangleTypeName( arrTypeName ) as string
+			EnsureNativeType(arrTypeName)
+
+			fieldType = ArrayTypeReference( SimpleTypeReference(arrTypeName) )
+		else:
+			raise Exception("Unhandled ${el.Name} resolve. ${DebugPrint()}")
+		
+		if not fieldTypeName and not fieldType:
+			raise Exception("Unhandled implicit declaration. ${DebugPrint()}")
+			#verbose = true
+			#extra += "[no fieldname]" 
+		
+		if fieldTypeName:
+			fieldTypeName = MangleTypeName(fieldTypeName) 
+			fieldType = SimpleTypeReference(fieldTypeName)
+			EnsureNativeType(fieldTypeName)
+		
+		if verbose:
+			print "   ${DebugPrint()}"
+		
+		fieldMember = Field( fieldType, null )
 		fieldMember.Name = fieldName
+		for attr in attrs:
+			fieldMember.Attributes.Add(attr)
 		return fieldMember
 		
-		#elif el.Name == "Typedef":
-		#	pass
-		#elif el.Name == "PointerType":
-		#	pass
 		#elif el.Name == "ArrayType":
 		#	pass
 		#elif el.Name == "TypeOfExprType":
@@ -279,9 +343,32 @@ class Structurizer:
 		#elif el.Name == "FunctionType":
 		#	pass
 
+	private def EnsureNativeType(id as string):
+		mangledId = MangleTypeName(id)
+		return if needed.Contains(id) or needed.Contains(mangledId)
+		needed.Add(id)
+
+	private def EnsureWrappedType(id as string):
+		return if needed.Contains(id)
+		needed.Add(id)
+
+	private def FetchTypeById(id as string):
+		return rs["Types"].SelectSingleNode("*[@id = \"${id}\"]") as XmlElement
+			
+	
+	private def ResolveTypedefTarget(target as XmlElement) as string:
+		if target.Name == "FundamentalType":
+			return target.AttrValue("kind")
+		elif target.Name == "Record":
+			return target.AttrValue("name")
+		elif target.Name == "PointerType":
+			return "object"
+		else:
+			raise NotImplementedException("Unhandled typedef target ${target.Name}.")
+
 	private def ReadoutElement(roel as XmlElement):
 		sb = StringBuilder()
-		for val in ("name","id","type","kind"):
+		for val in ("name","id","type","kind","size"):
 			tmp = roel.AttrValue(val)
 			continue if not tmp
 			sb.Append(val)
@@ -291,6 +378,17 @@ class Structurizer:
 		sb.Remove(sb.Length-1,1)
 		return sb.ToString()
 
+	private def BuildMarshalAs(sizeConst as int):
+		marshalAs = Boo.Lang.Compiler.Ast.Attribute("MarshalAs")
+		
+		byValArg = MemberReferenceExpression(ReferenceExpression("UnmanagedType"),"ByValArray")
+		marshalAs.Arguments.Add(byValArg)
+		
+		sizeConstArg = ExpressionPair(ReferenceExpression("SizeConst"), IntegerLiteralExpression(sizeConst))
+		marshalAs.NamedArguments.Add(sizeConstArg)
+
+		return marshalAs
+
 
 doc = XmlDocument()
 doc.Load(argv[0])
@@ -298,4 +396,4 @@ doc.Load(argv[0])
 s = Structurizer()
 mod = s.BuildModule(doc.DocumentElement)
 mod.Name = "demoOne"
-#print mod.ToCodeString()
+compile(mod) 
