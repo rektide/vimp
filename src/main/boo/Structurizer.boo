@@ -129,6 +129,9 @@ class Structurizer:
 		namespaceImports.Add("System.Runtime.InteropServices")
 
 	def BuildModule(ast as XmlElement, *types as (string)):
+		return BuildModule(ast, Module(), *types)
+
+	def BuildModule(ast as XmlElement, mod as Module, *types as (string)):
 		tu = ast["TranslationUnit"]
 		rs = ast["ReferenceSection"]
 		needed = LinkedList[of string]()
@@ -142,7 +145,6 @@ class Structurizer:
 		BuildWorkingNameMap()
 	
 		# build module
-		mod = Module()
 		i = 0
 		while i < needed.Count: 
 			name = needed[i++]

@@ -97,6 +97,9 @@ class MacroEnumerizer:
 	""" maps from a macro prefix to a enum name """
 
 	def BuildEnums(file as string) as Module:
+		return BuildEnums(file,Module())
+	
+	def BuildEnums(file as string, mod as Module) as Module:
 		enums = HashDictionary[of string,EnumDefinition]()
 		
 		# parse enums out of file
@@ -158,9 +161,6 @@ class MacroEnumerizer:
 			print "Loop exception;", ex
 		ensure:
 			sr.Close()
-		
-		# render enums into assembly
-		mod = Module()
 		
 		for member in enums:
 			mod.Members.Add(member.Value)
