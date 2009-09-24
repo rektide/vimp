@@ -129,7 +129,7 @@ class Structurizer:
 		namespaceImports.Add("System.Runtime.InteropServices")
 
 	def BuildStructs(ast as XmlElement, *types as (string)):
-		return BuildStruct(ast, Module(), *types)
+		return BuildStructs(ast, Module(), *types)
 
 	def BuildStructs(ast as XmlElement, mod as Module, *types as (string)):
 		tu = ast["TranslationUnit"]
@@ -396,6 +396,6 @@ doc = XmlDocument()
 doc.Load(argv[0])
 
 s = Structurizer()
-mod = s.BuildStruct(doc.DocumentElement)
+mod = s.BuildStructs(doc.DocumentElement)
 mod.Name = "demoOne"
 compile(mod) 
