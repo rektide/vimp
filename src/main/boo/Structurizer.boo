@@ -128,10 +128,10 @@ class Structurizer:
 		namespaceImports = ArrayList[of string]()	
 		namespaceImports.Add("System.Runtime.InteropServices")
 
-	def BuildModule(ast as XmlElement, *types as (string)):
-		return BuildModule(ast, Module(), *types)
+	def BuildStructs(ast as XmlElement, *types as (string)):
+		return BuildStruct(ast, Module(), *types)
 
-	def BuildModule(ast as XmlElement, mod as Module, *types as (string)):
+	def BuildStructs(ast as XmlElement, mod as Module, *types as (string)):
 		tu = ast["TranslationUnit"]
 		rs = ast["ReferenceSection"]
 		needed = LinkedList[of string]()
@@ -396,6 +396,6 @@ doc = XmlDocument()
 doc.Load(argv[0])
 
 s = Structurizer()
-mod = s.BuildModule(doc.DocumentElement)
+mod = s.BuildStruct(doc.DocumentElement)
 mod.Name = "demoOne"
 compile(mod) 
