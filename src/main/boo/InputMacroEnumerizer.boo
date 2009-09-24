@@ -1,4 +1,4 @@
-namespace VoodooWarez.Min
+namespace VoodooWarez.Systems.Min
 
 import Boo.Lang.Compiler.MetaProgramming
 

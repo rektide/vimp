@@ -1,4 +1,4 @@
-namespace VoodooWarez.Utils
+namespace VoodooWarez.Systems
 
 import Boo.Lang.Compiler.Ast
 

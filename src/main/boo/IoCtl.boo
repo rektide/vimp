@@ -1,4 +1,4 @@
-namespace VoodooWarez.Embed
+namespace VoodooWarez.Systems
 
 #import Microsoft.Win32.SafeHandles
 
