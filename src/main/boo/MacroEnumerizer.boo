@@ -96,7 +96,7 @@ class MacroEnumerizer:
 	[Property(EnumMap)] enumMap = HashDictionary[of string,string]()
 	""" maps from a macro prefix to a enum name """
 
-	def BuildEnums(file as string, ns as string) as Module:
+	def BuildEnums(file as string) as Module:
 		enums = HashDictionary[of string,EnumDefinition]()
 		
 		# parse enums out of file
@@ -161,7 +161,6 @@ class MacroEnumerizer:
 		
 		# render enums into assembly
 		mod = Module()
-		mod.Namespace = NamespaceDeclaration(ns)
 		
 		for member in enums:
 			mod.Members.Add(member.Value)

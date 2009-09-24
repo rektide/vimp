@@ -9,7 +9,7 @@ import System.IO
 import System.Text
 import System.Reflection.Emit
 
-import VoodooWarez.Utils
+import VoodooWarez.Systems
 
 
 
@@ -57,7 +57,8 @@ m.EnumMemberMangler = def(inp as string) as string:
 if argv.Length != 3:
 	print "InputMacroEnumerizer namespace input.{h,c} output.dll"
 	return
-module = m.BuildEnums(argv[1], argv[0])
+module = m.BuildEnums(argv[1])
+module.Name = argv[0]
 asmName = argv[2]
 asmName = asmName.Substring(0,asmName.LastIndexOf(char('.')))
 module.Name = asmName
