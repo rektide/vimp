@@ -1,86 +1,16 @@
 namespace VoodooWarez.Systems
 
 import Boo.Lang.Compiler.Ast
-import Boo.Lang.Compiler.MetaProgramming
 import C5
 import System
-import System.Reflection.Emit
-import System.Runtime.InteropServices
 import System.Text
-import System.Text.RegularExpressions
 import System.Xml
 
-callable NameMangleDelegate(input as string) as string
+import VoodooWarez.ExCathedra.C6
+import VoodooWarez.ExCathedra.Mangle
+import VoodooWarez.ExCathedra.Xml
 
-[Extension]
-def Find2[of T,U(class)](map as IDictionary[of T,U], key as T, ref obj as U):
-""" workaround for bizarre unresolveable overrides of Find """
-	try:
-		obj = map[key]
-	except sex as NoSuchItemException:
-		obj = null
 
-[Extension]
-static def Find[of T](arr as (T), key as T):
-	for i,el in enumerate(arr):
-		return i if el == key
-	return -1
-
-[Extension]
-static def Contains[of T](arr as (T), key as T):
-	return Find[of T](arr,key) != -1
-
-def JoinFunctions(*funcs as (callable)):
-	return def(input):
-		interm = input
-		for f in funcs:
-			try:
-				temp = f(interm)
-			except ex:
-				continue
-			interm = temp if temp
-		return interm
-
-def DelegateMangler(mangler as NameMangleDelegate):
-	return def(input):
-		return null if not mangler
-		return mangler(input)
-
-def NameMapMangler(nmap as IDictionary[of string,string]):
-	return def(inp):
-		return null if not nmap
-		outp as string
-		Find2[of string,string](nmap, inp as string, outp)
-		return outp
-
-def MapMangler[of T(class)](map as IDictionary[of T,T]):
-	return def(inp as T) as T:
-		return null if not map
-		outp as T 
-		Find2[of T,T](map, inp, outp)
-		return outp
-
-def StripMangler(start as string,end as string):
-	return def(inp as string) as string:
-		origLength = inp.Length
-		inp = inp[start.Length:] if start and inp.StartsWith(start)
-		inp = inp[:-end.Length] if end and inp.EndsWith(end)
-		return inp if inp.Length != origLength
-		return null
-
-def RegexMangler(regx as Regex, replace as string):
-	return def(inp as string) as string:
-		return regx.Replace(inp,replace)
-
-def TraceMangler(inp):
-	print "Trace mangler, value: ${inp}"
-	return
-
-[Extension]
-def AttrValue(el as XmlElement, attr as string) as string:
-	atNode = el.Attributes[attr]
-	return null if not atNode
-	return atNode.Value
 
 class Structurizer:
 
@@ -102,10 +32,10 @@ class Structurizer:
 
 	protected MangleTypeName as callable:
 		get: 
-			return JoinFunctions( DelegateMangler(typeMangle), RegexMangler(@/unsigned /,"u"), NameMapMangler(typeMap) )
+			return JoinManglers( DelegateMangler(typeMangle), RegexMangler(@/unsigned /,"u"), NameMapMangler(typeMap) )
 	protected MangleFieldName as callable:
 		get: 
-			return JoinFunctions( DelegateMangler(fieldMangle) )
+			return JoinManglers( DelegateMangler(fieldMangle) )
 
 	[Property(NamespaceImports)]
 	namespaceImports as ICollection[of string]
@@ -298,7 +228,6 @@ class Structurizer:
 			marshalAttr = BuildMarshalAs( sizeConst )	
 			attrs.Add( marshalAttr )
 			
-			arrType as TypeReference
 			if target.Name == "FundamentalType":
 				arrTypeName = target.AttrValue("kind")
 			elif target.Name == "Record":
@@ -392,10 +321,12 @@ class Structurizer:
 		return marshalAs
 
 
-doc = XmlDocument()
-doc.Load(argv[0])
 
-s = Structurizer()
-mod = s.BuildStructs(doc.DocumentElement)
-mod.Name = "demoOne"
-compile(mod) 
+#doc = XmlDocument()
+#doc.Load(argv[0])
+#
+#s = Structurizer()
+#mod = s.BuildStructs(doc.DocumentElement)
+#mod.Name = "demoOne"
+#compile(mod) 
+

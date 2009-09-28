@@ -4,25 +4,10 @@ import Boo.Lang.Compiler.Ast
 import Boo.Lang.Compiler.MetaProgramming
 
 import System
-import System.Diagnostics
 import System.Reflection.Emit
-import System.Threading
 import System.Xml
 
-
-
-def BashCommand(cmd as string):
-	cmd = cmd.Replace("\"","\\\"")
-	psi = ProcessStartInfo("bash","-c \"${cmd}\"")
-	psi.RedirectStandardInput = true
-	psi.RedirectStandardOutput = true
-	psi.RedirectStandardError = true
-	psi.UseShellExecute = false
-	return psi
-
-[Extension]
-def Start(psi as ProcessStartInfo):
-	return Process.Start(psi)
+import VoodooWarez.ExCathedra.Shell
 
 
 
