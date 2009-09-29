@@ -1,4 +1,4 @@
-namespace VoodooWarez.Systems
+namespace VoodooWarez.Systems.Import
 
 import Boo.Lang.Compiler.Ast
 import C5
@@ -128,7 +128,7 @@ class Structurizer:
 		for el as XmlElement in els:
 			typeName = el.AttrValue("name")
 			if typeName:
-				#print "adding ${typeName}"
+				print "adding ${typeName}"
 				EnsureNativeType( typeName )
 			else:
 				print "   Missing typename [${ReadoutElement(el)}]" 
@@ -275,7 +275,7 @@ class Structurizer:
 		#	pass
 
 	private def EnsureNativeType(id as string):
-		mangledId = MangleTypeName(id)
+		mangledId = MangleTypeName(id) as string
 		return if needed.Contains(id) or needed.Contains(mangledId)
 		needed.Add(id)
 

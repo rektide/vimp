@@ -1,9 +1,10 @@
-namespace VoodooWarez.Systems
+namespace VoodooWarez.Systems.Import
 
 import Boo.Lang.Compiler.Ast
 import Boo.Lang.Compiler.MetaProgramming
 
 import System
+import System.IO
 import System.Reflection.Emit
 import System.Xml
 
@@ -11,8 +12,8 @@ import VoodooWarez.ExCathedra.Shell
 
 
 
-if argv.Length != 1:
-	print "VoodooWimport input.{h.c}"
+if argv.Length != 3:
+	print "VoodooImport INFILE.{h.c} NAMESPACE OUTFILE"
 	return
 
 
@@ -21,9 +22,11 @@ if argv.Length != 1:
 
 file = argv[0]
 mod = Module()
-mod.Name = argv[1]
+modNamespace = argv[1]
 asmFile = argv[2]
-
+asmFile += ".dll" if not asmFile.EndsWith(".exe") and not asmFile.EndsWith(".dll")
+mod.Name = asmFile
+mod.Namespace = NamespaceDeclaration(modNamespace)
 
 
 # generate macro file
@@ -31,10 +34,15 @@ asmFile = argv[2]
 macroProcess = BashCommand("tmp=`mktemp`; echo $tmp; clang-cc -E -dM ${file} -o $tmp").Start()
 macroFile = macroProcess.StandardOutput.ReadLine()
 
+while not macroProcess.HasExited:
+	pass
+
 # build MacroEnumerizer & preferences
 
 menumerizer = MacroEnumerizer()
 menumerizer.BuildEnums(macroFile,mod)
+
+File.Delete(macroFile)
 
 
 
@@ -43,13 +51,18 @@ menumerizer.BuildEnums(macroFile,mod)
 structProcess = BashCommand("tmp=`mktemp`; echo $tmp; clang-cc --ast-print-xml ${file} -o $tmp").Start()
 structFile = structProcess.StandardOutput.ReadLine()
 
+while not structProcess.HasExited:
+	pass
+
 structDoc = XmlDocument()
 structDoc.Load(structFile)
 
 # build Structurizer & preferences
 
 structurizer = Structurizer()
-structurizer.BuildStructs(structDoc.DocumentElement)
+structurizer.BuildStructs(structDoc.DocumentElement,mod)
+
+File.Delete(structFile)
 
 
 
@@ -57,3 +70,5 @@ structurizer.BuildStructs(structDoc.DocumentElement)
 
 asmBuilder = compile(mod) as AssemblyBuilder
 asmBuilder.Save(asmFile)
+
+print "Complete"
