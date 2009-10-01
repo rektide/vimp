@@ -24,7 +24,7 @@ class Structurizer:
 
 	[Property(TypeMap)]
 	typeMap as IDictionary[of string,string]
-	[Property(TypeMangle)]	
+	[Property(TypeFieldMangle)]	
 	typeMangle as NameMangleDelegate
 	
 	[Property(FieldMangle)]
@@ -122,7 +122,8 @@ class Structurizer:
 		# spool elements from the input files
 		fileQuery = fileQueryList.Join(" or ")
 		query = "*[@name][${fileQuery}]"
-		query = "*[@name]"
+		# debug: query all, no filter.
+		#query = "*[@name]"
 		els = tu.SelectNodes(query)
 		print "files [file count:${fileQueryList.Count}] [query:${fileQuery} type_count:${els.Count}]"
 		for el as XmlElement in els:
