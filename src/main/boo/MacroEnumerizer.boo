@@ -7,7 +7,9 @@ import C5
 import System
 import System.IO
 
+import VoodooWarez.ExCathedra.C6
 import VoodooWarez.ExCathedra.Convert
+import VoodooWarez.ExCathedra.Mangle
 
 
 
@@ -22,13 +24,24 @@ class MacroEnumerizer:
 
 	intParser = IntegerLiteralParser()
 	
-	callable NameMangleDelegate(input as string) as string
-
-	[Property(EnumNameMangler)] nameMangler as NameMangleDelegate
-	[Property(EnumMemberMangler)] memberMangler as NameMangleDelegate
+	#[Property(EnumNameMangler)] nameMangler as NameMangleDelegate
+	#[Property(EnumMemberMangler)] memberMangler as NameMangleDelegate
 	
-	[Property(EnumMap)] enumMap = HashDictionary[of string,string]()
+	[Property(EnumMap)] 
+	enumMap = HashDictionary[of string,string]()
 	""" maps from a macro prefix to a enum name """
+	
+	[Property(EnumMangler)]
+	enumMangler as (IMangle)
+	[Property(EnumMemberMangler)]
+	enumMemberMangler as (IMangle)
+	
+	protected MangleEnumName as callable:
+		get:
+			return JoinMangler(*enumMangler).CallableMangler()
+	protected MangleMemberName as callable:
+		get:
+			return JoinMangler(*enumMemberMangler).CallableMangler()
 
 	def BuildEnums(file as string) as Module:
 		return BuildEnums(file,Module())
@@ -48,32 +61,18 @@ class MacroEnumerizer:
 					continue if not objName.StartsWith(key)
 					try:
 						enumMemberName = objName[key.Length:]
-						enumMemberName = objectNameClean.Replace(enumMemberName, "")
-						if memberMangler:
-							try:
-								proposed = memberMangler(enumMemberName)
-								enumMemberName = proposed if proposed
-							except ex:
-								pass
+						enumMemberName = MangleMemberName(enumMemberName)
 						
 						enumName = key
-						enumName = nameMangler(enumName) if nameMangler
-						try:
-							enumName = enumMap[enumName]
-						except:
-							pass
+						enumName = MangleEnumName(enumName)
+						
 						enumDefinition as EnumDefinition
-						#right way to do it, but crazy unhandleable ambiguous overload insanity in C5:
-						#enums.Find(enumName, enumDefinition)
-						try:
-							enumDefinition = enums[enumName]
-						except noSuch as NoSuchItemException:
-							pass
+						enums.Find2(enumName,enumDefinition)
 						if not enumDefinition:	
 							enumDefinition = EnumDefinition()
 							enumDefinition.Name = enumName
 							enums.Add(enumName, enumDefinition)
-							
+						
 						# find optional value
 						enumMember as EnumMember
 						try:
@@ -84,9 +83,9 @@ class MacroEnumerizer:
 							print "Ignoring [${enumMember}] in [${enumName}] from [${objName},${objValue}], for it has no value."
 							break
 						enumMember.Name = enumMemberName
-				
+						
 						print "Adding [${enumMember}, ${enumVal}] to [${enumName}] from raw [${objName},${objValue}]"
-								
+						
 						enumDefinition.Members.Add(enumMember)
 						break
 					except:
