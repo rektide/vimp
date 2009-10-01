@@ -26,6 +26,8 @@ if argv.Length != 3:
 
 # typedef / utility
 
+print "Parameter configuration"
+
 stringDict = HashDictionary[of string,string]
 
 # select file
@@ -42,19 +44,25 @@ mod.Name = asmFile
 
 # find spring context
 
+print "Spring loading root context"
 rootContext = ContextRegistry.GetContext()
-#for suffix in [ ".config", ".xml" ]:
-for suffix in [ ".config" ]:
+appContext = rootContext
+print "Spring loading app contexts"
+for suffix in [ ".config", ".xml" ]:
 	try:
 		print "looking at ${asmParam}${suffix}"
 		appContext = XmlApplicationContext(asmParam+"Context",false,rootContext,"file://"+asmParam+suffix)
 		print "found a root context [file://${asmParam}${suffix}]!"
 	except ex:
-		print "err ${ex}"
-	rootContext = appContext if appContext
+		pass
+rootContext = appContext
+
 
 
 # generate macro file
+
+print ""
+print "Macro enum processing"
 
 macroProcess = BashCommand("tmp=`mktemp`; echo $tmp; clang-cc -E -dM ${file} -o $tmp").Start()
 macroFile = macroProcess.StandardOutput.ReadLine()
@@ -67,7 +75,8 @@ while not macroProcess.HasExited:
 
 # build MacroEnumerizer & preferences
 
-menumerizer = MacroEnumerizer()
+menumerizer = rootContext.GetObject("MacroEnumerizer") as MacroEnumerizer
+#menumerizer = MacroEnumerizer()
 
 try:
 	enm = rootContext.GetObject("EnumMap", stringDict) as HashDictionary[of string,string]
@@ -91,6 +100,9 @@ File.Delete(macroFile)
 
 # generate structure file
 
+print ""
+print "Struct processing"
+
 structProcess = BashCommand("tmp=`mktemp`; echo $tmp; clang-cc --ast-print-xml ${file} -o $tmp").Start()
 structFile = structProcess.StandardOutput.ReadLine()
 
@@ -105,7 +117,8 @@ structDoc.Load(structFile)
 
 # build Structurizer & preferences
 
-structurizer = Structurizer()
+#structurizer = Structurizer()
+structurizer = rootContext.GetObject("Structurizer") as Structurizer
 structurizer.BuildStructs(structDoc.DocumentElement,mod)
 
 File.Delete(structFile)
@@ -113,6 +126,8 @@ File.Delete(structFile)
 
 
 # compile
+
+print "Code generated; compiling"
 
 asmBuilder = compile(mod) as AssemblyBuilder
 asmBuilder.Save(asmFile)
