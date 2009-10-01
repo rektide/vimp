@@ -22,20 +22,25 @@ class Structurizer:
 
 	layout as Boo.Lang.Compiler.Ast.Attribute
 
-	[Property(TypeMap)]
-	typeMap as IDictionary[of string,string]
-	[Property(TypeFieldMangle)]	
-	typeMangle as NameMangleDelegate
-	
-	[Property(FieldMangle)]
-	fieldMangle as NameMangleDelegate
+	[Property(TypeManglers)]
+	typeManglers as (IMangle)
+	[Property(TypeFieldManglers)]
+	typeFieldManglers as (IMangle)
+
+	#[Property(TypeMap)]
+	#typeMap as IDictionary[of string,string]
+	#[Property(TypeFieldMangle)]	
+	#typeMangle as NameMangleDelegate
+	#
+	#[Property(FieldMangle)]
+	#fieldMangle as NameMangleDelegate
 
 	protected MangleTypeName as callable:
-		get: 
-			return JoinManglers( DelegateMangler(typeMangle), RegexMangler(@/unsigned /,"u"), NameMapMangler(typeMap) )
+		get:
+			return JoinMangler(*typeManglers).CallableMangler()
 	protected MangleFieldName as callable:
 		get: 
-			return JoinManglers( DelegateMangler(fieldMangle) )
+			return JoinMangler(*typeFieldManglers).CallableMangler()
 
 	[Property(NamespaceImports)]
 	namespaceImports as ICollection[of string]
@@ -86,10 +91,10 @@ class Structurizer:
 			secondary = "or @name = \"${vintageName}\"" if vintageName
 			
 			# find node
-			typeEl = tu.SelectSingleNode("*[@name = \"${name}]\" ${secondary}]") as XmlElement
+			nodeQuery = "*[@name = \"${name}\" ${secondary}]"
+			typeEl = tu.SelectSingleNode(nodeQuery) as XmlElement
 			if not typeEl:
-				print "   Whoa, type ${name} not found!"
-				
+				print "   Whoa, type ${name} not found! | ${nodeQuery} ${tu} |"
 				continue
 			
 			# choose unmangled name
@@ -141,7 +146,7 @@ class Structurizer:
 			continue if not name
 			typeName = MangleTypeName(name)
 			continue if not typeName
-			# print "map ${name}:${typeName}"
+			#print "map ${name}:${typeName}"
 			workingNameMap[typeName] = name
 	
 	private def BuildMember(type as XmlElement,name) as TypeMember:
@@ -276,8 +281,14 @@ class Structurizer:
 		#	pass
 
 	private def EnsureNativeType(id as string):
-		mangledId = MangleTypeName(id) as string
-		return if needed.Contains(id) or needed.Contains(mangledId)
+		return if needed.Contains(id)
+		# may not be mangled yet
+		mangled = MangleTypeName(id) as string
+		return if needed.Contains(mangled)
+		# may be mangled already
+		unmangled as string
+		Find2(workingNameMap,id,unmangled) if workingNameMap
+		return if unmangled and needed.Contains(unmangled)
 		needed.Add(id)
 
 	private def EnsureWrappedType(id as string):
