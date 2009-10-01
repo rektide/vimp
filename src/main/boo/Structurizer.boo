@@ -94,7 +94,7 @@ class Structurizer:
 			nodeQuery = "*[@name = \"${name}\" ${secondary}]"
 			typeEl = tu.SelectSingleNode(nodeQuery) as XmlElement
 			if not typeEl:
-				print "   Whoa, type ${name} not found! | ${nodeQuery} ${tu} |"
+				print "   Whoa, type ${name} not found!"
 				continue
 			
 			# choose unmangled name
