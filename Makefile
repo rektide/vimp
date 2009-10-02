@@ -1,5 +1,5 @@
 
-OUTFILE=min.exe
+OUTFILE=vimp.exe
 
 all:
 	booc -r:ExCathedra.dll -r:Spring.Core.dll -keyfile:${SNK} -o:${OUTFILE} src/main/boo/*boo 
