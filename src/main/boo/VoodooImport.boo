@@ -52,8 +52,9 @@ for suffix in [ ".config", ".xml" ]:
 	try:
 		print "looking at ${asmParam}${suffix}"
 		appContext = XmlApplicationContext(asmParam+"Context",false,rootContext,"file://"+asmParam+suffix)
-		print "found a root context [file://${asmParam}${suffix}]!"
+		print "found for root context file [file://${asmParam}${suffix}]!"
 	except ex:
+		#print "err ${ex}"
 		pass
 rootContext = appContext
 
@@ -76,22 +77,6 @@ while not macroProcess.HasExited:
 # build MacroEnumerizer & preferences
 
 menumerizer = rootContext.GetObject("MacroEnumerizer") as MacroEnumerizer
-#menumerizer = MacroEnumerizer()
-
-try:
-	enm = rootContext.GetObject("EnumMap", stringDict) as HashDictionary[of string,string]
-	menumerizer.EnumMap = enm
-except nso as NoSuchObjectDefinitionException:
-	print "No such object; frak!"
-	return
-#except onType ObjectNotOfRequiredTypeException:
-#	pass
-
-#	enm = rootContext.GetObject("EnumMemberMangler", stringDict)
-#	enm = rootContext.GetObject("TypeMap", stringDict)
-#	enm = rootContext.GetObject("TypeMangler", stringDict)
-#	enm = rootContext.GetObject("TypeFieldMangler", stringDict)
-
 menumerizer.BuildEnums(macroFile,mod)
 
 File.Delete(macroFile)
