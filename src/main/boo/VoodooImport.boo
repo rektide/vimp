@@ -5,9 +5,7 @@ import Boo.Lang.Compiler.MetaProgramming
 
 import C5
 
-import Spring.Core
 import Spring.Context.Support
-import Spring.Objects.Factory
 
 import System
 import System.IO
@@ -27,8 +25,6 @@ if argv.Length != 3:
 # typedef / utility
 
 print "Parameter configuration"
-
-stringDict = HashDictionary[of string,string]
 
 # select file
 
