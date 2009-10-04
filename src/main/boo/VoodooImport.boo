@@ -13,11 +13,12 @@ import System.Reflection.Emit
 import System.Xml
 
 import VoodooWarez.ExCathedra.Shell
+import VoodooWarez.ExCathedra.Convert.Bytes
 
 
 
-if argv.Length != 3:
-	print "VoodooImport NAMESPACE OUTFILE [CONFIGFILE] INFILE.{c,h}..."
+if argv.Length != 4:
+	print "VoodooImport NAMESPACE OUTFILE KEYFILE INFILE.{c,h}..."
 	return
 
 
@@ -26,17 +27,24 @@ if argv.Length != 3:
 
 print "Parameter configuration"
 
+stringDict = HashDictionary[of string,string]
+
 # select file
 
-file = argv[2]
+file = argv[3]
 mod = Module()
 modNamespace = argv[0]
 mod.Namespace = NamespaceDeclaration(modNamespace)
 asmParam = argv[1]
 asmFile = asmParam
-asmFile += ".dll" if not asmFile.EndsWith(".exe") and not asmFile.EndsWith(".dll")
+suffix = ".boo"
+for ft in [ ".exe", ".dll", ".boo" ]:
+	suffix = "" if asmFile.EndsWith("")
+asmFile = asmFile+suffix
 asmParam = asmFile[:-4]
+print "asmParam", asmParam
 mod.Name = asmFile
+keyFile = argv[2]
 
 # find spring context
 
@@ -67,15 +75,18 @@ macroFile = macroProcess.StandardOutput.ReadLine()
 #print "stdout", macroProcess.StandardOutput.ReadToEnd()
 #print "stderr", macroProcess.StandardError.ReadToEnd()
 
-while not macroProcess.HasExited:
-	pass
+try:
+	while not macroProcess.HasExited:
+		pass
 
-# build MacroEnumerizer & preferences
+	# build MacroEnumerizer & preferences
+	
+	menumerizer = rootContext.GetObject("MacroEnumerizer") as MacroEnumerizer
+	menumerizer.BuildEnums(macroFile,mod)
 
-menumerizer = rootContext.GetObject("MacroEnumerizer") as MacroEnumerizer
-menumerizer.BuildEnums(macroFile,mod)
-
-File.Delete(macroFile)
+ensure:
+	File.Delete(macroFile)
+	print "macro-error:", macroProcess.StandardError.ReadToEnd()
 
 
 
@@ -90,19 +101,23 @@ structFile = structProcess.StandardOutput.ReadLine()
 #print "stdout", structProcess.StandardOutput.ReadToEnd()
 #print "stderr", structProcess.StandardError.ReadToEnd()
 
-while not structProcess.HasExited:
-	pass
+try:
+	while not structProcess.HasExited:
+		pass
+	
+	# load result doc
 
-structDoc = XmlDocument()
-structDoc.Load(structFile)
+	structDoc = XmlDocument()
+	structDoc.Load(structFile)
 
-# build Structurizer & preferences
+	# build Structurizer & preferences
 
-#structurizer = Structurizer()
-structurizer = rootContext.GetObject("Structurizer") as Structurizer
-structurizer.BuildStructs(structDoc.DocumentElement,mod)
+	structurizer = rootContext.GetObject("Structurizer") as Structurizer
+	structurizer.BuildStructs(structDoc.DocumentElement,mod)
 
-File.Delete(structFile)
+ensure:
+	File.Delete(structFile)
+	print "struct error:", structProcess.StandardError.ReadToEnd()
 
 
 
@@ -110,7 +125,23 @@ File.Delete(structFile)
 
 print "Code generated; compiling"
 
-asmBuilder = compile(mod) as AssemblyBuilder
-asmBuilder.Save(asmFile)
+try:
+	asmCode = asmParam+".boo"
+	asmCodeFile = File.Open(asmCode, FileMode.Create, FileAccess.Write)
+	
+	code = mod.ToCodeString().GetAsciiBytes()
+	asmCodeFile.Write( code, 0, code.Length )
+ensure:
+	asmCodeFile.Close() if asmCodeFile
+
+
+#asmBuilder = compile(mod) as AssemblyBuilder
+#asmBuilder.SetCustomAttribute(CustomAttributeBuilder( \
+#	typeof(System.Reflection.AssemblyKeyNameAttribute).GetConstructors()[0], \
+#	(asmParam,) ))
+#asmBuilder.SetCustomAttribute(CustomAttributeBuilder( \
+#	typeof(System.Reflection.AssemblyKeyFileAttribute).GetConstructors()[0], \
+#	(keyFile,) ))
+#asmBuilder.Save(asmFile)
 
 print "Complete"
