@@ -17,8 +17,8 @@ import VoodooWarez.ExCathedra.Convert.Bytes
 
 
 
-if argv.Length != 4:
-	print "VoodooImport NAMESPACE OUTFILE KEYFILE INFILE.{c,h}..."
+if argv.Length != 3:
+	print "VoodooImport NAMESPACE OUTFILE INFILE.{c,h}..."
 	return
 
 
@@ -31,7 +31,7 @@ stringDict = HashDictionary[of string,string]
 
 # select file
 
-file = argv[3]
+file = argv[2]
 mod = Module()
 modNamespace = argv[0]
 mod.Namespace = NamespaceDeclaration(modNamespace)
@@ -44,7 +44,6 @@ asmFile = asmFile+suffix
 asmParam = asmFile[:-4]
 print "asmParam", asmParam
 mod.Name = asmFile
-keyFile = argv[2]
 
 # find spring context
 
@@ -123,7 +122,7 @@ ensure:
 
 # compile
 
-print "Code generated; compiling"
+print "Code generated; writing to file."
 
 try:
 	asmCode = asmParam+".boo"
