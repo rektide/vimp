@@ -1,4 +1,4 @@
-namespace VoodooWarez.Systems.Import
+namespace VoodooWarez.Systems.Import.Helper
 
 import Boo.Lang.Compiler
 import Boo.Lang.Compiler.Ast
@@ -6,8 +6,6 @@ import Boo.Lang.PatternMatching
 
 import System
 import System.Runtime.InteropServices
-
-import VoodooWarez.Systems.Import
 
 
 

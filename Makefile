@@ -8,7 +8,7 @@ main:
 	booc -r:ExCathedra.dll -r:Spring.Core.dll -keyfile:${SNK} -o:${OUTFILE} src/main/boo/*boo 
 
 helper:
-	booc -keyfile:${SNK} -o:${HELPER} src/main/boo/Serialization/*Helper*boo
+	booc -keyfile:${SNK} -o:${HELPER} src/main/boo/Serialization/*boo
 
 
 install: all
