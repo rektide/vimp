@@ -202,12 +202,12 @@ class Structurizer:
 					# TODO: check all serializers, exit if found, else, lock mutex and add all missing providers.
 					
 					# insure basic ISerializers
-					LinearHelper.AddProvider( AutoStaticSerializerProvider(typeof(BitConverter)) ) if not LinearHelper.FindSerializer(int)
+					LinearHelper.AddProvider( AutoStaticSerializerProvider(typeof(BitConverter)) ) if not LinearHelper.FindSerializer[of int]()
 					
 					# generate any required non-trivial ISerializers -- 
 					# TODO: modify Structurizer to accept supplemental providers
-					#LinearHelper.AddProvider(StructSerializerProvider(Timeval)) if not LinearHelper.FindSerializer(Timeval)
-					#LinearHelper.AddProvider(StructSerializerProvider(...)) if not LinearHelper.FindSerializer(...)
+					#LinearHelper.AddProvider(StructSerializerProvider(Timeval)) if not LinearHelper.FindSerializer[of Timeval]()
+					#LinearHelper.AddProvider(StructSerializerProvider(...)) if not LinearHelper.FindSerializer[of ...]()
 			|]
 			
 			ser = [| 
@@ -231,7 +231,7 @@ class Structurizer:
 				fstm = field.Type as SimpleTypeReference
 				if fstm:
 					serStack.Items.Add( [|
-						LinearHelper.FindSerializer(typeof($(fstm.Name)))
+						LinearHelper.FindSerializer[of $(fstm.Name)]()
 					|] )
 					
 					serNoop = [|
@@ -250,14 +250,14 @@ class Structurizer:
 					|]
 					deser.Body.Statements.AddAll(deserNoop.Body.Statements)
 					constr.Body.Statements.Add( [|
-						LinearHelper.AddProvider(StructSerializerProvider(typeof($(fstm.Name)))) if not LinearHelper.FindSerializer($(fstm.Name))
+						LinearHelper.AddProvider(StructSerializerProvider(typeof($(fstm.Name)))) if not LinearHelper.FindSerializer[of $(fstm.Name)]()
 					|] )
 									
 				fatm = field.Type as ArrayTypeReference
 				if fatm:
 					
 					serStack.Items.Add( [|
-						LinearHelper.FindSerializer(typeof($(fatm.ElementType.ToCodeString())))
+						LinearHelper.FindSerializer[of $(fatm.ElementType.ToCodeString())]()
 					|] )
 					
 					attr as Boo.Lang.Compiler.Ast.Attribute
@@ -291,7 +291,7 @@ class Structurizer:
 					|]
 					deser.Body.Statements.AddAll(deserNoop.Body.Statements)
 					constr.Body.Statements.Add( [|
-						LinearHelper.AddProvider(StructSerializerProvider(typeof($(fstm.Name)))) if not LinearHelper.FindSerializer($(fstm.Name))
+						LinearHelper.AddProvider(StructSerializerProvider(typeof($(fstm.Name)))) if not LinearHelper.FindSerializer[of $(fstm.Name)]()
 					|] )
 			
 			# we've iterated through members, finish generating code for this StructDefinition
