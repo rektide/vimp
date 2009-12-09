@@ -316,6 +316,10 @@ class Structurizer:
 			serFinish = [|
 				def noop():
 					retv = array(byte,pos)
+					pos2 = 0
+					for bs as (byte) in out:
+						bs.CopyTo(retv,pos2)
+						pos2 += bs.Length
 					return retv
 			|]
 			ser.Body.Statements.AddAll(serFinish.Body.Statements)
