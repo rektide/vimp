@@ -82,7 +82,7 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 			
 			# identify targetType for this serializer method
 			targetType  = prms[0].ParameterType
-				
+			
 			# find reciprocal deserial method
 			deser as MethodInfo
 			for deser as MethodInfo in methods:
@@ -97,9 +97,9 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 			
 			# find size via a run on a default instance
 			instance = Activator.CreateInstance(targetType)
-			bytes = ser.Invoke(null, (instance) ) as (byte)
+			bytes = ser.Invoke(null, (instance,) ) as (byte)
 			size = bytes.Length
-			
+		
 			# retrieve names
 			typeName = targetType.FullName
 			sourceName = source.FullName
@@ -120,7 +120,11 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 						get:
 							return $(typeName)
 			|]
-			relations.Add(compile(klass))
+			print "almost ${klass.GetType()}"
+			cklass = compile(klass, Assembly.LoadFrom("vimp.helper.dll"))
+			print "class is ${cklass.GetType()}"
+			relations.Add(cklass)
+			print "next"
 
 
 	relations = List[of ISerializer]()
