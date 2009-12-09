@@ -1,14 +1,15 @@
 
 OUTFILE=vimp.dll
 HELPER=vimp.helper.dll
+BOOC_OPTS=-debug
 
 all: main helper
 
 main:
-	booc -r:ExCathedra.dll -r:Spring.Core.dll -keyfile:${SNK} -o:${OUTFILE} src/main/boo/*boo 
+	booc ${BOOC_OPTS} -r:ExCathedra.dll -r:Spring.Core.dll -keyfile:${SNK} -o:${OUTFILE} src/main/boo/*boo 
 
 helper:
-	booc -keyfile:${SNK} -o:${HELPER} src/main/boo/Serialization/*boo
+	booc ${BOOC_OPTS} -keyfile:${SNK} -o:${HELPER} src/main/boo/Helper/*boo
 
 
 install: all
