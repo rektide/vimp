@@ -92,11 +92,9 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 			
 			# find reciprocal deserial method
 			deser as MethodInfo
-			print "looking for deser of ${targetType}"
 			for m as MethodInfo in methods:
 				continue if not m.IsStatic
 				continue if not m.ReturnType == targetType 
-				print "${m} has return ${targetType}"
 				dsprms = m.GetParameters()
 				continue if not dsprms.Length == 2
 				continue if not dsprms[0].ParameterType == bytesType
@@ -104,7 +102,6 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 				deser = m
 				break
 			continue if not deser
-			print "found deser ${deser} looking for ${targetType}"
 			
 			# find size via a run on a default instance
 			instance = Activator.CreateInstance(targetType)
@@ -141,10 +138,6 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 							return typeof($(typeRef))
 			|]
 			genMod.Members.Add(klass)
-		print "break"
-		print ""
-		print genMod.ToCodeString()
-		print ""
 		compile(genMod, Assembly.LoadFrom("vimp.helper.dll"), Assembly.Load("System"))
 		# relations.Add(cklass)
 
