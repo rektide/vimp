@@ -1,6 +1,7 @@
 namespace VoodooWarez.Systems.Import.Helper
 
 import Boo.Lang.Compiler.MetaProgramming
+import Boo.Lang.Compiler.Ast
 
 import System
 import System.Collections
@@ -20,17 +21,17 @@ interface ISerializable:
 interface ISerializer:
 	def Serialize(o) as (byte):
 		pass
-	def Deserialize(o as (byte), start as int):
+	def Deserialize(o as (byte), start as int) as object:
 		pass
 	Size as int:
 		get
 	Type as Type:
 		get
 
-interface ISerializer[of T](ISerializer):
-	def Serialize(o as T) as (byte):
+interface IGenericSerializer[of T](ISerializer):
+	def GenericSerialize(o as T) as (byte):
 		pass
-	def Deserialize(o as (byte), start as int) as T:
+	def GenericDeserialize(o as (byte), start as int) as T:
 		pass
 
 interface ISerializerProvider (IEnumerable[of ISerializer]):
@@ -71,6 +72,12 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 		self.toBytePattern = toBytePattern
 		self.providerInstance = Interlocked.Increment(instanceIter)
 
+		genMod = [|
+			namespace VoodooWarez.Systems.Import.Helper.Generated
+			
+			import VoodooWarez.Systems.Import.Helper
+			import System
+		|]
 		methods = source.GetMethods()
 		for ser as MethodInfo in methods:
 			# identify serializer methods
@@ -85,15 +92,19 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 			
 			# find reciprocal deserial method
 			deser as MethodInfo
-			for deser as MethodInfo in methods:
-				continue if not deser.IsStatic
-				continue if not deser.ReturnType != targetType
-				dsprms = deser.GetParameters()
+			print "looking for deser of ${targetType}"
+			for m as MethodInfo in methods:
+				continue if not m.IsStatic
+				continue if not m.ReturnType == targetType 
+				print "${m} has return ${targetType}"
+				dsprms = m.GetParameters()
 				continue if not dsprms.Length == 2
 				continue if not dsprms[0].ParameterType == bytesType
 				continue if not dsprms[1].ParameterType == intType
+				deser = m
 				break
 			continue if not deser
+			print "found deser ${deser} looking for ${targetType}"
 			
 			# find size via a run on a default instance
 			instance = Activator.CreateInstance(targetType)
@@ -102,29 +113,40 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 		
 			# retrieve names
 			typeName = targetType.FullName
+			typeRef = ReferenceExpression.Lift(typeName)
 			sourceName = source.FullName
-			klassName = "_SerialRelation_$(providerInstance)_$(relationInstance++)"
+			sourceRef = ReferenceExpression.Lift(sourceName)
+			klassName = "_SerialRelation_${providerInstance}_${relationInstance++}"
 			
 			klass = [|
-				class $(klassName) ( ISerializer[of $(typeName)] ):
-					def Serialize(o as $(typeName)) as (byte):
-						return $(sourceName).$(ser.Name)(o)
+				class $(klassName) ( IGenericSerializer[of $(typeName)] ):
+					
+					def Serialize(o) as (byte):
+						return $(sourceRef).$(ser.Name)(cast($typeName,o))
+					
+					def GenericSerialize(o as $(typeName)) as (byte):
+						return $(sourceRef).$(ser.Name)(o)
 						
-					def Deserialize( bs as (byte), start as int ) as $(typeName):
-						return $(sourceName).$(deser.Name)(bs,start)
+					def Deserialize( bs as (byte), start as int) as object:
+						return $(sourceRef).$(deser.Name)(bs,start)
+					
+					def GenericDeserialize( bs as (byte), start as int ) as $(typeName):
+						return $(sourceRef).$(deser.Name)(bs,start)
 					
 					Size as int:
 						get:
 							return $(size)
 					Type as Type:
 						get:
-							return $(typeName)
+							return typeof($(typeRef))
 			|]
-			print "almost ${klass.GetType()}"
-			cklass = compile(klass, Assembly.LoadFrom("vimp.helper.dll"))
-			print "class is ${cklass.GetType()}"
-			relations.Add(cklass)
-			print "next"
+			genMod.Members.Add(klass)
+		print "break"
+		print ""
+		print genMod.ToCodeString()
+		print ""
+		compile(genMod, Assembly.LoadFrom("vimp.helper.dll"), Assembly.Load("System"))
+		# relations.Add(cklass)
 
 
 	relations = List[of ISerializer]()
@@ -166,7 +188,7 @@ static class LinearHelper:
 	def constructor():
 		Providers = ( AutoStaticSerializerProvider(BitConverter) )
 	
-	def FindSerializer[of T]() as ISerializer[of T]:
+	def FindSerializer[of T]() as IGenericSerializer[of T]:
 		for m in Relations:
 			if typeof(T) == m.GetType().GetGenericArguments()[0]:
 				return m
