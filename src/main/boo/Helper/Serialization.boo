@@ -34,8 +34,9 @@ interface IGenericSerializer[of T](ISerializer):
 	def GenericDeserialize(o as (byte), start as int) as T:
 		pass
 
-interface ISerializerProvider (IEnumerable[of ISerializer]):
-	pass
+interface ISerializerProvider:
+	Serializers as IEnumerable[of ISerializer]:
+		get
 
 class StructSerializerProvider (ISerializerProvider):
 	serializant as ISerializable
@@ -43,14 +44,9 @@ class StructSerializerProvider (ISerializerProvider):
 	def constructor(serializant as ISerializable):
 		pass
 	
-	Relations as IEnumerator[of ISerializer]:
+	Serializers as IEnumerable[of ISerializer]:
 		get:
 			pass
-	
-	def System.Collections.IEnumerable.GetEnumerator() as IEnumerator:
-		return Relations
-	def GetEnumerator() as IEnumerator[of ISerializer]:
-		return Relations
 	
 class AutoStaticSerializerProvider (ISerializerProvider):
 
@@ -64,10 +60,10 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 	
 	static instanceIter = 0
 	
-	relations = List[of ISerializer]()
-	Relations as IEnumerator[of ISerializer]:
+	serializers = List[of ISerializer]()
+	Serializers as IEnumerable[of ISerializer]:
 		get:
-			return relations
+			return serializers
 
 	def constructor(source as Type):
 		self(source, /GetBytes/)
@@ -146,15 +142,8 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 		asm= compile(genMod, Assembly.LoadFrom("vimp.helper.dll"), Assembly.Load("System"))
 		for serClass in asm.GetTypes():
 			serInstance = Activator.CreateInstance(serClass)
-			relations.Add(serInstance)
+			serializers.Add(serInstance)
 	
-	def System.Collections.IEnumerable.GetEnumerator() as IEnumerator:
-		return Relations
-	
-	def GetEnumerator() as IEnumerator[of ISerializer]:
-		return Relations
-	
-
 static class LinearHelper:
 
 	fieldOffsetAttr = typeof(FieldOffsetAttribute)
@@ -164,7 +153,7 @@ static class LinearHelper:
 	sequentialLayout = LayoutKind.Sequential
 	explicitLayout = LayoutKind.Explicit
 
-	[Getter(Relations)] relations = List[of ISerializer]()
+	[Getter(Serializers)] serializers = List[of ISerializer]()
 	
 	providers = List[of ISerializerProvider]()
 	Providers as IEnumerable[of ISerializerProvider]:
@@ -173,25 +162,26 @@ static class LinearHelper:
 			return providers
 		set:
 			providers.Clear()
-			relations.Clear()
+			serializers.Clear()
 			for f in value:
 				providers.Add(f)
-				for ser in f:
-					relations.Add(ser)
+				for ser in f.Serializers:
+					serializers.Add(ser)
 	
 	def constructor():
-		Providers = ( AutoStaticSerializerProvider(BitConverter) )
+		Providers = ( AutoStaticSerializerProvider(BitConverter) as ISerializerProvider, )
 	
 	def FindSerializer[of T]() as IGenericSerializer[of T]:
-		for m in Relations:
-			if typeof(T) == m.GetType().GetGenericArguments()[0]:
-				return m
+		for s in Serializers:
+			i = s.GetType().GetInterface("IGenericSerializer`1")
+			continue if not i
+			return s if typeof(T) == i.GetGenericArguments()[0]
 		return null
 	
 	def AddProvider(provider as ISerializerProvider):
 		providers.Add(provider)
-		for ser in provider:
-			relations.Add(ser)
+		for ser in provider.Serializers:
+			serializers.Add(ser)
 
 	def GetOffsets(t as Type) as IEnumerator[of int]:
 		raise ArgumentException("$(t) is not a linear value type") if not t.IsSubclassOf( ValueType ) 
