@@ -59,11 +59,16 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 	bytesType = typeof((byte))
 	intType = typeof(int)
 	
-	providerInstance as int
-	relationInstance as int
+	providerInstance as int # this classes' assigned instanceIter
+	relationInstance as int # enumeration of relations provided by this provider
 	
 	static instanceIter = 0
 	
+	relations = List[of ISerializer]()
+	Relations as IEnumerator[of ISerializer]:
+		get:
+			return relations
+
 	def constructor(source as Type):
 		self(source, /GetBytes/)
 	
@@ -113,7 +118,7 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 			typeRef = ReferenceExpression.Lift(typeName)
 			sourceName = source.FullName
 			sourceRef = ReferenceExpression.Lift(sourceName)
-			klassName = "_SerialRelation_${providerInstance}_${relationInstance++}"
+			klassName = "_AutoStaticRelation_${providerInstance}_${++relationInstance}"
 			
 			klass = [|
 				class $(klassName) ( IGenericSerializer[of $(typeName)] ):
@@ -138,14 +143,10 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 							return typeof($(typeRef))
 			|]
 			genMod.Members.Add(klass)
-		compile(genMod, Assembly.LoadFrom("vimp.helper.dll"), Assembly.Load("System"))
-		# relations.Add(cklass)
-
-
-	relations = List[of ISerializer]()
-	Relations as IEnumerator[of ISerializer]:
-		get:
-			return relations
+		asm= compile(genMod, Assembly.LoadFrom("vimp.helper.dll"), Assembly.Load("System"))
+		for serClass in asm.GetTypes():
+			serInstance = Activator.CreateInstance(serClass)
+			relations.Add(serInstance)
 	
 	def System.Collections.IEnumerable.GetEnumerator() as IEnumerator:
 		return Relations
