@@ -203,7 +203,7 @@ class Structurizer:
 					
 					# insure basic ISerializers
 					LinearHelper.AddProvider( AutoStaticSerializerProvider(typeof(BitConverter)) ) if not LinearHelper.FindSerializer[of int]()
-					
+			
 					# generate any required non-trivial ISerializers -- 
 					# TODO: modify Structurizer to accept supplemental providers
 					#LinearHelper.AddProvider(StructSerializerProvider(Timeval)) if not LinearHelper.FindSerializer[of Timeval]()
@@ -218,7 +218,7 @@ class Structurizer:
 
 			deser = [| 
 				def Deserialize(bs as (byte), start as int):
-					pos = 0
+					pos = start
 			|]
 			
 			serStack = ArrayLiteralExpression()

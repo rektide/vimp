@@ -261,12 +261,14 @@ static class LinearHelper:
 		Providers = ( AutoStaticSerializerProvider(BitConverter) as ISerializerProvider, )
 	
 	def FindSerializer[of T]() as IGenericSerializer[of T]:
+		return FindSerializer(typeof(T)) as IGenericSerializer[of T]
+
+	def FindSerializer(t as Type) as ISerializer:
 		for s in Serializers:
 			i = s.GetType().GetInterface("IGenericSerializer`1")
 			continue if not i
-			return s if typeof(T) == i.GetGenericArguments()[0]
-		return null
-	
+			return s if t == i.GetGenericArguments()[0]
+		
 	def AddProvider(provider as ISerializerProvider):
 		providers.Add(provider)
 		for ser in provider.Serializers:
