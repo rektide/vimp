@@ -236,7 +236,7 @@ class Structurizer:
 					
 					serNoop = [|
 						def serNoop():
-							$(tmp) = serializerStack[$(i)] as ISerializer[of $(field.Type)]
+							$(tmp) = serializerStack[$(i)] as IGenericSerializer[of $(field.Type)]
 							datum = $(tmp).Serialize(self.$(field.Name))
 							out.Push(datum)
 							pos += datum.Length
@@ -244,7 +244,7 @@ class Structurizer:
 					ser.Body.Statements.AddAll(serNoop.Body.Statements)
 					deserNoop = [|
 						def deserNoop():
-							$(tmp) = serializerStack[$(i)] as ISerializer[of $(field.Type)]
+							$(tmp) = serializerStack[$(i)] as IGenericSerializer[of $(field.Type)]
 							self.$(field.Name) = $(tmp).Deserialize(bs,pos)
 							pos += $(tmp).Size
 					|]
@@ -274,7 +274,7 @@ class Structurizer:
 					
 					serNoop = [|
 						def serArrayNoop():
-							$(tmp) = serializerStack[$(i)] as ISerializer[of $(field.Type)]
+							$(tmp) = serializerStack[$(i)] as IGenericSerializer[of $(field.Type)]
 							for i in range($(size)):
 								datum = $(tmp).Serialize(self.$(field.Name)[$(i)])
 								out.Push(datum)
@@ -283,7 +283,7 @@ class Structurizer:
 					ser.Body.Statements.AddAll(serNoop.Body.Statements)
 					deserNoop = [|
 						def deserArrayNoop():
-							$(tmp) = serializerStack[$(i)] as ISerializer[of $(field.Type)]
+							$(tmp) = serializerStack[$(i)] as IGenericSerializer[of $(field.Type)]
 							self.$(field.Name) = array( $(field.Type.ToCodeString()), $(i) )
 							for i in range($(size)):
 								self.$(field.Name)[$(i)] = $(tmp).Deserialize(bs,pos)

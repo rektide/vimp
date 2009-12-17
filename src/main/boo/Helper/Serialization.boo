@@ -38,15 +38,104 @@ interface ISerializerProvider:
 	Serializers as IEnumerable[of ISerializer]:
 		get
 
+
 class StructSerializerProvider (ISerializerProvider):
-	serializant as ISerializable
 	
-	def constructor(serializant as ISerializable):
-		pass
-	
+	serializers as (ISerializer)
 	Serializers as IEnumerable[of ISerializer]:
 		get:
-			pass
+			return serializers
+		set:
+			serializers = array(ISerializer,value)
+	
+	static structSerializer as Type
+	static iSerializable as Type
+	
+	static def constructor():
+		structSerializer = Type.GetType("VoodooWarez.Systems.Import.Helper.StructSerializer`1")
+		iSerializable = Type.GetType("VoodooWarez.Systems.Import.Helper.ISerializable")
+	
+	def constructor(serializant as Type):
+		
+		# validate input
+		found = false
+		for i in serializant.GetInterfaces():
+			found = true if i == iSerializable
+		raise ArgumentException("Not a ISerializable class") if not found
+	
+		# build ISerializer for ISerialable	
+		t = structSerializer.MakeGenericType(serializant)
+		print "building ${t}"
+		serializer = Activator.CreateInstance(t) as ISerializer
+		print "done with ${serializer} ${serializer.GetType()}"
+		
+		# install
+		serializers = array(ISerializer,(serializer,))
+	
+class StructSerializer[of T(ISerializable,constructor)] (IGenericSerializer[of T], NotSupportedSerializer):
+
+	Type as Type:
+		get:
+			return TargetType
+	
+	size as int
+	Size as int:
+		get:
+			return size
+	
+	def constructor():
+		print "StructSerializer of ${typeof(T)}"
+		super(typeof(T))
+		size = Marshal.SizeOf(typeof(T))
+		
+	def GenericSerialize(o as T) as (byte):
+		return o.Serialize()
+		
+	def GenericDeserialize(bs as (byte), start as int) as T:
+		# instantiating generic parameters not yet supported
+		o = Activator.CreateInstance(typeof(T)) as T
+		o.Deserialize(bs,start)
+		return o
+	
+	def Serialize(o) as (byte):
+		AssertType(o)
+		return (o as T).Serialize()
+	
+	def Deserialize(bs as (byte), start as int) as object:
+		return GenericDeserialize(bs,start)
+
+
+abstract class NotSupportedSerializer(ISerializer):
+	
+	target as Type
+	isInterface as bool
+	
+	TargetType as Type:
+		get:
+			return target
+		set:
+			target = value
+			isInterface = value.IsInterface
+			
+	def constructor(target as Type):
+		self.TargetType = target
+	
+	protected def AssertType(candidate):
+		oType = candidate.GetType()
+		oType = candidate if oType == typeof(Type)
+		raise ArgumentException("Not supported type ${oType}") if not IsOfTargetType(oType)
+	
+	protected def IsOfTargetType(candidate as Type):
+		return true if candidate == target
+		if isInterface:
+			interfaces = candidate.GetInterfaces()
+			for i in interfaces:
+				return true if i == target
+		base = candidate.BaseType
+		while(base):
+			return true if base == target
+			base = candidate.BaseType
+		return false
 	
 class AutoStaticSerializerProvider (ISerializerProvider):
 
@@ -196,26 +285,13 @@ static class LinearHelper:
 			
 			#for f in fs:
 			#	ser = FindSerializer(f.FieldType)
-				
-			
-				
 			
 		elif isExplicit:
 			offset = fs[0].GetCustomAttributes( fieldOffsetAttr, false )[0] as FieldOffsetAttribute
 			yield offset.Value
 			
-			
-				
 			# primitive
 			# record
 			# array
-			
-	
-	def GetGenericType():
-		pass
-		
-	#def ConvertItem(ls as ILinearSerializable):
-	
-	#def Serialize(bs as (byte), t as Type):
-	#	for f in t.GetFields():
-	
+
+
