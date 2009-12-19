@@ -117,7 +117,9 @@ class Structurizer:
 					if tmp_member = m as TypeMember:
 						strct.Members.Add(tmp_member)
 					localLinear = false if m == false
-				globalLinear = true if localLinear
+				if localLinear:
+					globalLinear = true 
+					strct.BaseTypes.Add( SimpleTypeReference("ISerializable") )
 				print "[finishing BuildMember ${name}]"
 			except ex:
 				print "   [failed to build ${name}] ${ex}"
@@ -173,6 +175,7 @@ class Structurizer:
 			print "found ${name}"
 			target = StructDefinition()
 			target.Name = name
+			rn = ReferenceExpression(name as string)
 			target.Attributes.Add( layout )
 		
 			linear = true
@@ -203,6 +206,7 @@ class Structurizer:
 					
 					# insure basic ISerializers
 					LinearHelper.AddProvider( AutoStaticSerializerProvider(typeof(BitConverter)) ) if not LinearHelper.FindSerializer[of int]()
+					LinearHelper.AddProvider( StructSerializerProvider(typeof( $(rn) )) ) if not LinearHelper.FindSerializer( typeof($(rn)) )
 			
 					# generate any required non-trivial ISerializers -- 
 					# TODO: modify Structurizer to accept supplemental providers
@@ -231,7 +235,7 @@ class Structurizer:
 				fstm = field.Type as SimpleTypeReference
 				if fstm:
 					serStack.Items.Add( [|
-						LinearHelper.FindSerializer[of $(fstm.Name)]()
+						LinearHelper.FindSerializer[of $(fstm.Name)]() as ISerializer
 					|] )
 					
 					serNoop = [|
@@ -257,7 +261,7 @@ class Structurizer:
 				if fatm:
 					
 					serStack.Items.Add( [|
-						LinearHelper.FindSerializer[of $(fatm.ElementType.ToCodeString())]()
+						LinearHelper.FindSerializer[of $(fatm.ElementType.ToCodeString())]() as ISerializer
 					|] )
 					
 					attr as Boo.Lang.Compiler.Ast.Attribute
@@ -332,6 +336,10 @@ class Structurizer:
 			deser.Body.Statements.AddAll(deserFinish.Body.Statements)
 			yield deser
 			
+			yield [|
+				static def GetSerializer() as IGenericSerializer[of $(rn)]:
+					return LinearHelper.FindSerializer(typeof( $(rn) ))
+			|]
 
 			
 			# PROTOTYPE, implemented above.

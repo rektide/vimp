@@ -65,14 +65,12 @@ class StructSerializerProvider (ISerializerProvider):
 	
 		# build ISerializer for ISerialable	
 		t = structSerializer.MakeGenericType(serializant)
-		print "building ${t}"
 		serializer = Activator.CreateInstance(t) as ISerializer
-		print "done with ${serializer} ${serializer.GetType()}"
 		
 		# install
 		serializers = array(ISerializer,(serializer,))
 	
-class StructSerializer[of T(ISerializable,constructor)] (IGenericSerializer[of T], NotSupportedSerializer):
+class StructSerializer[of T(ISerializable,constructor,class)] (IGenericSerializer[of T], NotSupportedSerializer):
 
 	Type as Type:
 		get:
@@ -84,7 +82,6 @@ class StructSerializer[of T(ISerializable,constructor)] (IGenericSerializer[of T
 			return size
 	
 	def constructor():
-		print "StructSerializer of ${typeof(T)}"
 		super(typeof(T))
 		size = Marshal.SizeOf(typeof(T))
 		
@@ -93,9 +90,10 @@ class StructSerializer[of T(ISerializable,constructor)] (IGenericSerializer[of T
 		
 	def GenericDeserialize(bs as (byte), start as int) as T:
 		# instantiating generic parameters not yet supported
-		o = Activator.CreateInstance(typeof(T)) as T
-		o.Deserialize(bs,start)
-		return o
+		o = Activator.CreateInstance(typeof(T)) 
+		# kludge around boo/generic-dodginess with a duck
+		(o as duck).Deserialize(bs,start)
+		return o as T
 	
 	def Serialize(o) as (byte):
 		AssertType(o)
@@ -153,6 +151,17 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 	Serializers as IEnumerable[of ISerializer]:
 		get:
 			return serializers
+
+	vimpHelperAssembly as Assembly
+	protected VimpHelperAssembly as Assembly:
+		get:
+			return vimpHelperAssembly if vimpHelperAssembly
+			for asm in AppDomain.CurrentDomain.GetAssemblies():
+				for mod in asm.GetModules():
+					vimpHelperAssembly = asm if mod.Name == "vimp.helper.dll"
+			raise Exception("vimp.helper.dll not found") if not vimpHelperAssembly
+			return vimpHelperAssembly
+			
 
 	def constructor(source as Type):
 		self(source, /GetBytes/)
@@ -228,7 +237,8 @@ class AutoStaticSerializerProvider (ISerializerProvider):
 							return typeof($(typeRef))
 			|]
 			genMod.Members.Add(klass)
-		asm= compile(genMod, Assembly.LoadFrom("vimp.helper.dll"), Assembly.Load("System"))
+		
+		asm= compile(genMod, VimpHelperAssembly, Assembly.Load("System"))
 		for serClass in asm.GetTypes():
 			serInstance = Activator.CreateInstance(serClass)
 			serializers.Add(serInstance)

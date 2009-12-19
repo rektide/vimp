@@ -15,7 +15,7 @@ class ObjectInstantiationEventArgs (EventArgs):
 	
 
 	def constructor(o,sender as FileObjectStream):
-		self.newObject = object
+		self.newObject = o
 		self.file = sender
 
 
@@ -66,17 +66,29 @@ class FileObjectStream:
 	
 	byteArrayType = array(byte,0).GetType()
 
-	event OnNewObjectInstantiation as callable(ObjectInstantiationEventArgs)
+	event OnNewObjectInstantiation as callable(object,ObjectInstantiationEventArgs)
 
 	def constructor(fileName as string, serializer as ISerializer):
 		self.serializer = serializer
 		self.numBytes = serializer.Size
 		self.fileName = fileName
 		ReOpenFile()
+	
+	def constructor(fileStream as FileStream, serializer as ISerializer):
+		self.serializer = serializer
+		self.numBytes = serializer.Size
+		self.file = fileStream
+		self.fileName = fileStream.Name
 
 	def Start():
+		ReInitBuffers() if not buffers
 		offset = (offset + 1) % buffersCount
+		isRunning = true
 		DoRead()
+	
+	def Stop():
+		isRunning = false
+		file.EndRead(readAsyncResult) if file and readAsyncResult
 	
 	protected def DoRead():
 		length = bufferLength - bufferPosition
@@ -102,7 +114,7 @@ class FileObjectStream:
 		buffersOffset = -1
 		bufferPosition = 0
 		
-	static def ReadCallback(ar as IAsyncResult):
+	def ReadCallback(ar as IAsyncResult):
 		fsm = ar.AsyncState as FileObjectStream
 		count = fsm.File.EndRead(ar)
 	
@@ -112,8 +124,8 @@ class FileObjectStream:
 		start = fsm.BufferPosition - residual # starting place including prefill
 		while countDown >= fsm.numBytes:
 			obj= fsm.Serializer.Deserialize(fsm.Buffers[fsm.BuffersOffset],start)
-			objEvent = ObjectInstantiationEventArgs(obj,fsm)
-			fsm.OnNewObjectInstantiation(objEvent)
+			objEvent = ObjectInstantiationEventArgs(obj,fsm) as ObjectInstantiationEventArgs
+			fsm.OnNewObjectInstantiation(self,objEvent)
 			countDown -= fsm.NumBytes
 			start += fsm.NumBytes
 		fsm.BufferPosition += count # advance to end
