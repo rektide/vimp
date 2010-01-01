@@ -1,0 +1,323 @@
+Ok writing this blind without my existing vimp docs.  But I havent delved in technically, so I might as well.
+
+Vimp, the project name, is a muxing of VoodooImport.  But its handy not to think of this as VoodooImport, and to think of it as vimp, because vimp is its name and its actual namespace is VoodooWarez.Systems.Import.  Its goal is to render useful CLR based on c header file input.  Here are some of its capabilities, using linux's input.h file as an example of input.
+
+<h3>Structurization</h3>
+
+With the c code:
+
+<tt style="white-space:pre-wrap" >struct input_event {
+  struct timeval time;
+  __u16 type;
+  __u16 code;
+  __s32 value;
+};</tt>
+
+Vimp's <i>Structurizer</i>, with that input, yields the following Boo translation:
+
+<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
+struct InputEvent(ISerializable):
+  Time as Timeval
+  Type as ushort
+  Code as ushort
+  Value as int</tt>
+
+<h3>Llvm</h3>
+
+Additionally, because of the magic of llvm ((( upon which vimp is hinged ))), we get the following depenency:
+
+<tt style="white-space:pre-wrap">struct Timeval(ISerializable):
+  TvSec as long
+  TvUsec as long </tt>
+
+Which has been automatically extracted from the time.h code
+
+<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
+struct timeval {
+  __kernel_time_t         tv_sec;         /* seconds */
+  __kernel_suseconds_t    tv_usec;        /* microseconds */
+};</tt>
+
+Wow, how did this happen? Where did this get pulled from?  All that was specified when running vimp was "input.h".  Well, for this dependency loading, vimp thanks Llvm.  
+
+Vimp starts a "clang-cc --ast-print-xml" on its input.  Here's what our original input_event structure looks like in the xml ast view:
+
+<tt style="white-space:pre-wrap">&lt;Record id="_21B" file="f15" line="21" col="8" context="_2" name="input_event" type="_21C"&gt;
+  &lt;Field id="_21D" file="f15" line="22" col="17" context="_21B" name="time" type="_6F"/&gt;
+  &lt;Field id="_21E" file="f15" line="23" col="8" context="_21B" name="type" type="_20F"/&gt;
+  &lt;Field id="_21F" file="f15" line="24" col="8" context="_21B" name="code" type="_20F"/&gt;
+  &lt;Field id="_220" file="f15" line="25" col="8" context="_21B" name="value" type="_222"/&gt;
+&lt;/Record&gt;</tt>
+
+This is the system of record from which Structurizer develops Boo code and CLR structures.  
+
+Also in the ast view output is the timeval dependency!  Here's the ast view of timeval, which clang-cc automatically reads from "time.h":
+
+<tt style="white-space:pre-wrap">&lt;Record id="_6E" file="f5" line="69" col="8" context="_2" name="timeval" type="_6F"&gt;
+  &lt;Field id="_70" file="f5" line="71" col="14" context="_6E" name="tv_sec" type="_6D"/&gt;
+  &lt;Field id="_71" file="f5" line="72" col="19" context="_6E" name="tv_usec" type="_73"/&gt;
+&lt;/Record&gt;</tt>
+
+There are more dependencies.  We need the type's _6D and _73 for tv_sec and tv_usec.  Lets follow _6D, the type for tv_sec, further down the chain.
+
+<tt style="white-space:pre-wrap">&lt;Typedef type="_33" name="__time_t" context="_2" id="_6D"/&gt;</tt>
+
+And there is in turn a record for type _33:
+
+<tt>&lt;FundamentalType kind="long" id="_33"/&gt;</tt>
+
+This is finally the end stop; from the source of input_event, Structurizer has created a InputEvent and a Timeval, with Timeval's tv_sec having a value of "long"
+
+<h3>Mangling</h3>
+
+Names have obviously been mangled here; timeval's tv_sec has become Timeval's TvSec; these transformations have been made by a sequence, a chain, of manglers.  Field names and type names are mangled independently.  Lets look at how these are setup (via the default Spring.NET configuration):
+
+<tt style="white-space:pre-wrap">
+&lt;object id="BaseStructurizer"
+  type="VoodooWarez.Systems.Import.Structurizer, vimp"&gt;
+  &lt;property name="TypeManglers"&gt;
+    &lt;list&gt;
+      &lt;ref object="UnsignedMangler" /&gt;
+      &lt;ref object="CamelCaseMangler" /&gt;
+      &lt;ref object="PrimitiveMapMangler"/&gt;
+    &lt;/list&gt;
+  &lt;/property&gt;
+  &lt;property name="TypeFieldManglers"&gt;
+    &lt;list&gt;
+      &lt;ref object="CamelCaseMangler"/&gt;
+    &lt;/list&gt;
+  &lt;/property&gt;
+&lt;/object&gt;
+</tt>
+
+Taking timeval's property "__kernel_time_t tv_sec", which has a type (originally "__kernel_time_t", resolved via typedef's to, ) "long", and a member name, "tv_sec".  These are the starting values before the mangler chains.  Type gets run through an unsigned manger-- this would transform "unsigned long" into the boo type "ulong", but the long is signed, so it just passes "long" along.  The camel case map turns "long" into "Long", and similarly maps "timeval" to "Timeval" and "input_event" to "InputEvent" (camel case is a capitalization scheme used in computer programming).  Lastly, the primitive map sees "Long" and knows to translate it into the Boo primitive type "long".  The primitive map is copied below:
+
+<tt style="white-space:pre-wrap">
+&lt;object id="PrimitiveMapMangler"
+  type="VoodooWarez.ExCathedra.Mangle.NameMapMangler, ExCathedra" &gt;
+  &lt;constructor-arg index="0"&gt;
+    &ltobject 
+      type="VoodooWarez.ExCathedra.C6.DictFactory, ExCathedra"
+      factory-method="CreateDict&amp;lt;string,string&gt;" &gt;
+      &lt;constructor-arg index="0"&gt;
+        &lt;dictionary key-type="string" value-type="string"&gt;
+          &lt;entry key="Char" value="byte" /&gt;
+          &lt;entry key="UChar" value="byte" /&gt;
+          &lt;entry key="Short" value="short" /&gt;
+          &lt;entry key="Ushort" value="ushort" /&gt;
+          &lt;entry key="Int" value="int" /&gt;
+          &lt;entry key="Uint" value="uint" /&gt;
+          &lt;entry key="Long" value="long" /&gt;
+          &lt;entry key="Ulong" value="ulong" /&gt;
+        &lt;/dictionary&gt;
+      &lt;/constructor-arg&gt;
+    &lt;/object&gt;
+  &lt;/constructor-arg&gt;
+&lt;/object&gt;
+</tt>
+
+The field name mangler is just the camel case mangler.  It transforms input_event's "time" property into "Time", as well as transforming timeval's "tv_sec" property into "TvSec".
+
+<h3>Generating</h3>
+
+The ast has been loaded in and mangled; Structurizer now knows everything required to start outputting Boo code.  
+
+Notice in these various ast views a file attribute, f15 for input_event and f5 for timeval.  These correspond, not surprisingly, to files.  Structurizer identifies the original input file, and uses various code generation techniques (quasi-quotes and programatic AST construction) to build Boo classes for these records and these records dependencies.  It will recurse the dependency graph as best as possible, and output a boo file.  In this example, Structurizer's BuildMember gets the record for "input_event", starts a struct, then adds "input_event"'s various fields via BuildFields.
+
+Structurizer, at its base, is a class generator.  Its base uses AST construction to build the skeleton class.  The base struct, InputEvent, is created via constructing a StructDefinition in BuildMember, and setting its mangled name, "InputEvent".  BuildField reads <Field> records and builds boo Field's, making for example InputEvent's Time field of type Timeval (as well as InputEvent's other fields; Value, Code, and Type).
+
+<h2>MacroEnumerizer</h2>
+
+The primary other function of vimp is Macro Enumerization.  input.h has, for example, has the following snippet in a sequence of macro's defined:
+
+<tt style="white-space:pre-wrap">#define KEY_RESERVED            0
+#define KEY_ESC                 1
+#define KEY_1                   2
+#define KEY_2                   3
+#define KEY_3                   4
+#define KEY_4                   5
+#define KEY_5                   6
+#define KEY_6                   7
+#define KEY_7                   8
+#define KEY_8                   9
+#define KEY_9                   10
+#define KEY_0                   11
+#define KEY_MINUS               12
+#define KEY_EQUAL               13
+#define KEY_BACKSPACE           14
+#define KEY_TAB                 15
+#define KEY_Q                   16
+#define KEY_W                   17
+#define KEY_E                   18
+#define KEY_R                   19
+#define KEY_T                   20
+#define KEY_Y                   21</tt>
+
+The corresponding MacroEnumerizer output is:
+
+<tt style="white-space:pre-wrap">enum KeyEnum:
+  Reserved = 0
+  Esc = 1
+  Num1 = 2
+  Num2 = 3
+  Num3 = 4
+  Num4 = 5
+  Num5 = 6
+  Num6 = 7
+  Num7 = 8
+  Num8 = 9
+  Num9 = 10
+  Num0 = 11
+  Minus = 12
+  Equal = 13
+  Backspace = 14
+  Tab = 15
+  Q = 16
+  W = 17
+  E = 18
+  R = 19
+  T = 20
+  Y = 21</tt>
+
+The MacroEnumerizer uses "clang-cc -E -dM" to preprocess and output all macros of the input file, and then attempts to pattern recognize and match macro definitions into an enum.
+
+<h3>Serialization</h3>
+
+Beyond simply porting c structs and typedefs into Boo, Structurizer has an additional responsibility: binary serialization of these object definitions.  
+
+Lets look at the full body of the generated code for InputEvent, which shows this serialization in action:
+
+<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
+struct InputEvent(ISerializable):
+  Time as Timeval
+  Type as ushort
+  Code as ushort
+  Value as int
+
+  static serializerStack as (ISerializer)
+  static serializerLength = 0
+
+  static def constructor():
+    LinearHelper.AddProvider(AutoStaticSerializerProvider(typeof(BitConverter))) if (not LinearHelper.FindSerializer[of int]())
+    LinearHelper.AddProvider(StructSerializerProvider(typeof(InputEvent))) if (not LinearHelper.FindSerializer(typeof(InputEvent)))
+    LinearHelper.AddProvider(StructSerializerProvider(typeof(Timeval))) if (not LinearHelper.FindSerializer[of Timeval]())
+    LinearHelper.AddProvider(StructSerializerProvider(typeof(ushort))) if (not LinearHelper.FindSerializer[of ushort]())
+    LinearHelper.AddProvider(StructSerializerProvider(typeof(ushort))) if (not LinearHelper.FindSerializer[of ushort]())
+    LinearHelper.AddProvider(StructSerializerProvider(typeof(int))) if (not LinearHelper.FindSerializer[of int]())
+    serializerStack = ((LinearHelper.FindSerializer[of Timeval]() as ISerializer), (LinearHelper.FindSerializer[of ushort]() as ISerializer), (LinearHelper.FindSerializer[of ushort]() as ISerializer), (LinearHelper.FindSerializer[of int]() as ISerializer))
+    for l as ISerializer in serializerStack:
+      serializerLength += l.Size
+
+  def Serialize() as (byte):
+    out = List[of (byte)]()
+    pos = 0
+    ser0 = (serializerStack[0] as IGenericSerializer[of Timeval])
+    datum = ser0.Serialize(self.Time)
+    out.Push(datum)
+    pos += datum.Length
+    ser1 = (serializerStack[1] as IGenericSerializer[of ushort])
+    datum = ser1.Serialize(self.Type)
+    out.Push(datum)
+    pos += datum.Length
+    ser2 = (serializerStack[2] as IGenericSerializer[of ushort])
+    datum = ser2.Serialize(self.Code)
+    out.Push(datum)
+    pos += datum.Length
+    ser3 = (serializerStack[3] as IGenericSerializer[of int])
+    datum = ser3.Serialize(self.Value)
+    out.Push(datum)
+    pos += datum.Length
+    retv = array(byte, pos)
+    pos2 = 0
+    for bs as (byte) in out:
+    bs.CopyTo(retv, pos2)
+    pos2 += bs.Length
+    return retv
+
+  def Deserialize(bs as (byte), start as int):
+    bsstr = ""
+    for i in range(24):
+    bsstr += " " + bs[start+i]
+    print "deser|${bsstr}" 
+    pos = start
+    ser0 = (serializerStack[0] as IGenericSerializer[of Timeval])
+    self.Time = ser0.Deserialize(bs, pos)
+    pos += ser0.Size
+    ser1 = (serializerStack[1] as IGenericSerializer[of ushort])
+    self.Type = ser1.Deserialize(bs, pos)
+    pos += ser1.Size
+    print "deser|${pos}|${n1}"
+    ser2 = (serializerStack[2] as IGenericSerializer[of ushort])
+    self.Code = ser2.Deserialize(bs, pos)
+    pos += ser2.Size
+    ser3 = (serializerStack[3] as IGenericSerializer[of int])
+    self.Value = ser3.Deserialize(bs, pos)
+    pos += ser3.Size
+	
+  static def GetSerializer() as IGenericSerializer[of InputEvent]:
+    return LinearHelper.FindSerializer(typeof(InputEvent))
+</tt>
+
+LinearHelper is a repository of ISerializers that perform serialization tasks.  The static constructor insures the registry has the required serializers for the struct (as well as a Serializer for the struct itself).  Serialize and Deserializer perform the actual binary ser-/deser- tasks.  GetSerializer returns a Serializer for the struct.  These functions have largely been developed via template macro generators.  In fact, the dominant body of BuildMember is creating these additional constructs.  For example, for every member, there is:
+
+<tt style="white-space:pre-wrap">serNoop = [|
+  def serNoop():
+    $(tmp) = serializerStack[$(i)] as IGenericSerializer[of $(field.Type)]
+    datum = $(tmp).Serialize(self.$(field.Name))
+    out.Push(datum)
+    pos += datum.Length
+|]</tt>
+
+(there are numerous interpolated variables here... see the InputEvent example above for details on how these interoplations pan out.)
+
+These bodies are then aggregated onto an existing base:
+
+<tt style="white-space:pre-wrap">ser = [| 
+  def Serialize() as (byte):
+    out = List[of (byte)]()
+    pos = 0
+|]</tt>
+
+And that produces the above original Serialize() code.
+
+<h4>Serializers</h4>
+
+A serializer is fairly trivial:
+
+<tt style="white-space:pre-wrap">interface ISerializer:
+  def Serialize(o) as (byte):
+    pass
+  def Deserialize(o as (byte), start as int) as object:
+    pass
+  Size as int:
+    get
+  Type as Type:
+    get
+
+interface IGenericSerializer[of T](ISerializer):
+  def GenericSerialize(o as T) as (byte):
+    pass
+  def GenericDeserialize(o as (byte), start as int) as T:
+    pass
+</tt>
+
+There are some ISerializer providers, discussed below.
+
+<h4>AutoStaticSerializerProvider</h4>
+
+AutoStaticSerializerProvider is a "generic" Serializer provider (provides numerous IGenericSerializers) whose goal is to expose other classes Serial/Deserialization capabilities.  Its used to expose the CLR's BitConvert's primitive serialization capabilities, although it could be used either directly or as a base for harnessing other ser-/deser- capabilities.
+
+<h4>StructSerializerProvider<h4>
+
+StructSerializerProvider's provide one IGenericSerializer, for an ISerializable type.
+
+<h4>LinearHelper</h4>
+
+LinearHelper serves as a central registry for ISerializerProviders and ISerializers.  If an IGenericSerializer for a particular type is needed, a FindSerializer can be issued to lookup its corresopnding ISerializer.
+
+<h2>Future improvement</h2>
+
+<ul>
+<li>Structurizer port comments intact.</li>
+<li></li>
+</ul>
