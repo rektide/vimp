@@ -1,10 +1,40 @@
-Ok writing this blind without my existing vimp docs.  But I havent delved in technically, so I might as well.
+<h1>Input# and vimp: expeditionary metaprogramming guide</h1>
 
-Vimp, the project name, is a muxing of VoodooImport.  But its handy not to think of this as VoodooImport, and to think of it as vimp, because vimp is its name and its actual namespace is VoodooWarez.Systems.Import.  Its goal is to render useful CLR based on c header file input.  Here are some of its capabilities, using linux's input.h file as an example of input.
+Input# is a managed device-input (keyboard, mouse, remote control, &c) library which has been dominantly produced via metaprogramming: at present count, there are 11Kbytes of hand written Input# code and over 40Kbytes of generated code.  Vimp, the metaprogramming tool created to create Input#, stands at just over 36K bytes.  
+
+The case of Input#-- and its partial progenitor vimp-- are to be taken as an expeditionary guide, an exploration of metaprogramming, and this document a triplog of building these new tools.  
+
+Although this was an exploratory voyage, deliberately set upon with the intent to explore metaprogramming terrain, there was an overriding end goal: a properly built library for talking to device-input.  Vimp, although generally useful ((( beyond the domain of Input# alone ))) and relishably illustrative of various metaprogramming uses and techniques, is not a shining exemplar of well engineered code.  Vimp was a project which was born into subservience, built to create Input#.  A birth troubled ever more by not having an upfront plan for what Input# was going to be or require!  Vimp was born the child of an entity actively under creation and definition, which resulted in a number of kludges, which are outlined in #FutureWork.
+
+Lastly, this document does not intend to explain the Input# library; it uses Input# as an example, but does not attend to the higher level engineering questions of how Input# was designed and what its use cases are.
+
+That said!  Have fun!  Vimp is an outrageous collection of metaprogramming hacks; a saga consuming ~50 hours of work resulting a 4K savings of manually written code ((( 40Kbytes of generated code v. 36Kbytes of vimp code ))) and its a delight, a treasure, to be able to share this assorted, varied, and ultimately mild case study about tool building in the digital world.
+
+<h2>Metaprogramming</h2>
+
+Code is a construct, a machine that serves a purpose, it's gears turning.  Programming is writing code.  Metaprogramming is writing code that writes or modifies other code ((( typicallly other code, in "unusual circumstances" it may modify or write its <i>own</i> code ))).  The case of reading code, and whether or not that is a metaprogramming exercise, is more up in the air: I personally would argue if there is some behavior or output as an artifact of reading code, theres a high chance the particular activity is a form of metaprogramming.  This is a mere personal interprettation of where the line stands between programming & metaprogramming; at its heart and in spirit, metaprogramming is writing code about code; the particulars will have to be judged on a case by case basis.
+
+Vimp is a metaprogramming transformer.  It reads one piece of code ((( actually it relies upon LLVM's representations of a piece of code ))), and outputs an enriched ((( so said, because vimp layers in additional functionality ))) isomorphism of that code in another programming language  ((( semantically and structurally equivalent ))).  The input is a c header file, containing macro definitions and structures, and the output is a portable Boo code / Common Language Runtime (CLR) rendition of that input, allieviating some of the manual labor of <a href="http://www.mono-project.com/Interop_with_Native_Libraries#Marshaling">Interop with Native Libraries</a> ((( redefinining structures in CLR and exposing macro definitions ))).  The additional enrichment is a built in binary serialization layer; something memory-oriented C code has "for free" via memcpy that does not exist in the managed CLR environment.
+
+In the the building of Input#, vimp is the first step: linux defines how to talk to input devices ((( exposes a device's capabilities ))) in a c header file "input.h".  Vimp reads this file and creates managed types corresponding to its contents.  These basic structures are then used by high level code in Input#, aggregated and mixed together to build a top-level InputDevice object; an object describing a single input device and its capabilities.  
+
+<h2>Vimp</h2>
+
+Vimp, the project name, is a muxing of VoodooImport; its a <i>VoodooWarez</i> utility to <i>import</i> c structures into the CLR.  C code is parsed via LLVM's clang-cc c compiler, and the parsed AST tree (in XML) ((( along with the origins dependencies, and the origin's body of macro definitions ))) is used by vimp to generate "isomorphic" Boo code ((( which can then be compiled into a .NET/CLR Assembly ))).
+
+<tt style="white-space: pre-wrap;">  <b>isomorphism</b>
+  
+     <mathematics> A bijective map between two objects which
+     preserves, in both directions, any structure under
+     consideration.</tt>
+
+To fulfil isomorphism, the Boo code generated is a struct, layed out in sequential order, replicating the origin's c-struct's contents.  Additionally, to maintain the useful binary serialization of memcpy in c, the generated code provides serialization mechanisms for linear structures ((( pointers are presently not dereferenced, and cause generated code to lack serialization mechanisms ))).
 
 <h3>Structurization</h3>
 
-With the c code:
+C has structure definitions, which vimp outputs as Boo struct definitions.
+
+With the following c code as input:
 
 <tt style="white-space:pre-wrap" >struct input_event {
   struct timeval time;
@@ -26,11 +56,12 @@ struct InputEvent(ISerializable):
 
 Additionally, because of the magic of llvm ((( upon which vimp is hinged ))), we get the following depenency:
 
-<tt style="white-space:pre-wrap">struct Timeval(ISerializable):
+<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
+struct Timeval(ISerializable):
   TvSec as long
   TvUsec as long </tt>
 
-Which has been automatically extracted from the time.h code
+Which has been automatically extracted from the "time.h" code:
 
 <tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
 struct timeval {
@@ -40,7 +71,7 @@ struct timeval {
 
 Wow, how did this happen? Where did this get pulled from?  All that was specified when running vimp was "input.h".  Well, for this dependency loading, vimp thanks Llvm.  
 
-Vimp starts a "clang-cc --ast-print-xml" on its input.  Here's what our original input_event structure looks like in the xml ast view:
+Vimp starts a "clang-cc --ast-print-xml" on its input.  Clang builds an abstract syntax tree (AST) for its input ((( "input.h" in this case ))), and its dependencies ((( including "time.h" for "input.h" ))), and prints the tree; this tree contains the complete record of objects used to compile the input.  Here's what our original "input.h" input_event structure looks like in the xml ast view:
 
 <tt style="white-space:pre-wrap">&lt;Record id="_21B" file="f15" line="21" col="8" context="_2" name="input_event" type="_21C"&gt;
   &lt;Field id="_21D" file="f15" line="22" col="17" context="_21B" name="time" type="_6F"/&gt;
@@ -49,7 +80,7 @@ Vimp starts a "clang-cc --ast-print-xml" on its input.  Here's what our original
   &lt;Field id="_220" file="f15" line="25" col="8" context="_21B" name="value" type="_222"/&gt;
 &lt;/Record&gt;</tt>
 
-This is the system of record from which Structurizer develops Boo code and CLR structures.  
+We can see from this snippet of output, input_event contains four fields, named time, type, code and value.  Whenever Linux generates output for an input device, the output will have these four records, in that order.  Vimp's task is to turn these four records into Boo code.  Along the way, vimp is going to have to look up and understand the various "type" values for these four fields.
 
 Also in the ast view output is the timeval dependency!  Here's the ast view of timeval, which clang-cc automatically reads from "time.h":
 
@@ -318,6 +349,169 @@ LinearHelper serves as a central registry for ISerializerProviders and ISerializ
 <h2>Future improvement</h2>
 
 <ul>
+<li>Break Serialization out of Structurizer; re-engineer as a third AST pipeline step.</li>
 <li>Structurizer port comments intact.</li>
-<li></li>
+<li>Macro expression evaluation.</li>
 </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+<h1>Emprisaria, Input# and vimp: high level userscripting pattern, a linux input device library, and metaprogramming to get there.</h1>
+
+
+
+<h2>Use case</h2>
+
+I set out seeking to control a display-less car computer system, usedly mainly for audio/mp3 playing.  The use case was pretty simple: I need to be able to effectively control a music media player and an audiobook media player, both running at the same time.
+
+On the hardware side, the primary input device is an ATI Remote Wonder.  
+<a href="http://rektide.voodoowarez.com/2009/12/wonder.jpg" alt="ati remote wonder in situo"/>
+
+My various media players expose <a href="http://wiki.xmms2.xmms.se/wiki/Media_Player_Interfaces">MPRIS interfaces</a>.  MPRIS is a <a href="http://www.freedesktop.org/wiki/Software/dbus">dbus interface</a>, dbus being a cross platform inter-program messaging system; dbus gives the media player the ability to be controlled by other programs, MPRIS defines the set of controls.  I need some kind of way of sending MPRIS calls based on my user input.
+
+<h2>The stack</h2>
+
+To arrive at a solution, I have created two low level systems libraries, and am still architecting a third orchestrator.
+
+<h2>Solution<h2>
+
+
+
+<h1>Input# and vimp: expeditionary metaprogramming guide</h1>
+
+Input# is a managed input library which has been dominantly produced via metaprogramming, aiming to be a straightforward simple to use library for talking to linux input devices.  
+
+<h2>What</h2>
+
+The metaprogramming tool, vimp, is in this case a program translator.  Vimp accepts c header files and outputs Common Language Runtime (CLR) virtual machine structures, which are built in response to structs and macro-definitions vimp can parse and map into enums.  This greatly reduced manual labor when doing <a href="http://www.mono-project.com/Interop_with_Native_Libraries#Marshaling">Interop with Native Library</a>, as the various structs are already defined.  Vimp has one additional capability, which is an IoC based binary serialization framework.
+
+In the the building of Input#, vimp is the first step: it reads the linux file "input.h" and creates native wrappers for the Input structures and macros.  These basic structures are then aggregated and mixed together to build a master top-level InputDevice object; an object describing a single device, from which all the various input.h IoCtl's and and event readers can be run.
+
+<h2>Guide</h2>
+
+The case of Input# and vimp, and this document, are to be taken as an expeditionary guide.  It is a triplog of building new tools.  Issues like code cleanliness were never a focus; a destination, an idealized model of what was desired, was locked in, and all affordances were made to conform to building the desired user friendly Input# library.  In particular, vimp was weilded as a tool of the moment; whatever the current need was, be it mapping out enums from macros, or doing binary serialization, vimp metaprogramming was the base that seemed to take the brunt.  As a voyage to Input#, this travel was a success.  However, it leaves me wanting to journey back, and perhaps ammend some of the clutter in vimp.  The base Structurizer code will always be a beast, but refactoring latter additions such as serialization into the pipeline would be a boon for vimps flexability and legibility.
+
+
+<h2>IoC and the Registry of Serializers</h2>
+
+<h2>Linux</h2>
+
+In linux, there is a header file defining structures for dealing with /dev/input devices, "input.h".  
+
+
+<h3>Code</h3>
+
+Lets look at the code.  These structures 
+
+<div style="background-color: #333333;"><tt>
+/*
+ * The event structure itself
+ */
+
+struct input_event {
+        struct timeval time;
+        __u16 type;
+        __u16 code;
+        __s32 value;
+};
+
+/*
+ * IOCTLs (0x00 - 0x7f)
+ */
+
+#define EVIOCGVERSION           _IOR('E', 0x01, int)                    /* get driver version */
+#define EVIOCGID                _IOR('E', 0x02, struct input_id)        /* get device ID */
+#define EVIOCGREP               _IOR('E', 0x03, int[2])                 /* get repeat settings */
+#define EVIOCSREP               _IOW('E', 0x03, int[2])                 /* set repeat settings */
+#define EVIOCGKEYCODE           _IOR('E', 0x04, int[2])                 /* get keycode */
+#define EVIOCSKEYCODE           _IOW('E', 0x04, int[2])                 /* set keycode */
+
+#define EVIOCGNAME(len)         _IOC(_IOC_READ, 'E', 0x06, len)         /* get device name */
+#define EVIOCGPHYS(len)         _IOC(_IOC_READ, 'E', 0x07, len)         /* get physical location */
+#define EVIOCGUNIQ(len)         _IOC(_IOC_READ, 'E', 0x08, len)         /* get unique identifier */
+
+#define EVIOCGKEY(len)          _IOC(_IOC_READ, 'E', 0x18, len)         /* get global keystate */
+#define EVIOCGLED(len)          _IOC(_IOC_READ, 'E', 0x19, len)         /* get all LEDs */
+#define EVIOCGSND(len)          _IOC(_IOC_READ, 'E', 0x1a, len)         /* get all sounds status */
+#define EVIOCGSW(len)           _IOC(_IOC_READ, 'E', 0x1b, len)         /* get all switch states */
+
+#define EVIOCGBIT(ev,len)       _IOC(_IOC_READ, 'E', 0x20 + ev, len)    /* get event bits */
+#define EVIOCGABS(abs)          _IOR('E', 0x40 + abs, struct input_absinfo)             /* get abs value/limits */
+#define EVIOCSABS(abs)          _IOW('E', 0xc0 + abs, struct input_absinfo)             /* set abs value/limits */
+
+#define EVIOCSFF                _IOC(_IOC_WRITE, 'E', 0x80, sizeof(struct ff_effect))   /* send a force effect to a force feedback device */
+#define EVIOCRMFF               _IOW('E', 0x81, int)                    /* Erase a force effect */
+#define EVIOCGEFFECTS           _IOR('E', 0x84, int)                    /* Report number of effects playable at the same time */
+
+#define EVIOCGRAB               _IOW('E', 0x90, int)                    /* Grab/Release device */
+
+/*
+ * Event types
+ */
+
+#define EV_SYN                  0x00
+#define EV_KEY                  0x01
+#define EV_REL                  0x02
+#define EV_ABS                  0x03
+#define EV_MSC                  0x04
+#define EV_SW                   0x05
+#define EV_LED                  0x11
+#define EV_SND                  0x12
+#define EV_REP                  0x14
+#define EV_FF                   0x15
+#define EV_PWR                  0x16
+#define EV_FF_STATUS            0x17
+#define EV_MAX                  0x1f
+#define EV_CNT                  (EV_MAX+1)
+
+
+/*
+ * Keys and buttons (ed. mf: snip comments)
+ */
+
+#define KEY_RESERVED            0
+#define KEY_ESC                 1
+#define KEY_1                   2
+#define KEY_2                   3
+#define KEY_3                   4
+#define KEY_4                   5
+#define KEY_5                   6
+#define KEY_6                   7
+#define KEY_7                   8
+#define KEY_8                   9
+#define KEY_9                   10
+#define KEY_0                   11
+#define KEY_MINUS               12
+#define KEY_EQUAL               13
+#define KEY_BACKSPACE           14
+#define KEY_TAB                 15
+#define KEY_Q                   16
+#define KEY_W                   17
+#define KEY_E                   18
+#define KEY_R                   19
+#define KEY_T                   20
+#define KEY_Y                   21
+#define KEY_U                   22
+#define KEY_I                   23
+#define KEY_O                   24
+#define KEY_P                   25
+#define KEY_LEFTBRACE           26
+#define KEY_RIGHTBRACE          27
+#define KEY_ENTER               28
+#define KEY_LEFTCTRL            29
+#define KEY_A                   30
+</tt></div>
+
+
+<h2>Motivations</h2>
+
+
