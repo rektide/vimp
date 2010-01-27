@@ -1,6 +1,6 @@
 <h1>Input# and vimp: expeditionary metaprogramming guide</h1>
 
-Input# is a managed device-input (keyboard, mouse, remote control, &c) library which has been dominantly produced via metaprogramming: at present count, there are 11Kbytes of hand written Input# code and over 40Kbytes of generated code.  Vimp, the metaprogramming tool created to create Input#, stands at just over 36K bytes.  
+Input# is a managed device-input (keyboard, mouse, remote control, &c) library which has been dominantly produced via metaprogramming: at present count, there are 11Kbytes of hand written Input# code and over 40Kbytes of generated code.  Vimp, the metaprogramming tool created to create Input#, stands at just over 36K bytes (and ~50 hours of labor).  
 
 The case of Input#-- and its partial progenitor vimp-- are to be taken as an expeditionary guide, an exploration of metaprogramming, and this document a triplog of building these new tools.  
 
@@ -12,15 +12,17 @@ That said!  Have fun!  Vimp is an outrageous collection of metaprogramming hacks
 
 <h2>Metaprogramming</h2>
 
-Code is a construct, a machine that serves a purpose, it's gears turning.  Programming is writing code.  Metaprogramming is writing code that writes or modifies other code ((( typicallly other code, in "unusual circumstances" it may modify or write its <i>own</i> code ))).  The case of reading code, and whether or not that is a metaprogramming exercise, is more up in the air: I personally would argue if there is some behavior or output as an artifact of reading code, theres a high chance the particular activity is a form of metaprogramming.  This is a mere personal interprettation of where the line stands between programming & metaprogramming; at its heart and in spirit, metaprogramming is writing code about code; the particulars will have to be judged on a case by case basis.
+Code is a construct, a machine that serves a purpose, it's gears turning.  Programming is writing code.  Metaprogramming is writing code that writes or modifies other code ((( typicallly other code, in "unusual circumstances" it may modify or write its <i>own</i> code ))).  The case of reading code, and whether or not that is a metaprogramming exercise, is more up in the air: I personally would argue if there is some behavior or output as an artifact of reading code, theres a high chance the particular activity is a form of metaprogramming.  The distinction is a weak one, and 
 
-Vimp is a metaprogramming transformer.  It reads one piece of code ((( actually it relies upon LLVM's representations of a piece of code ))), and outputs an enriched ((( so said, because vimp layers in additional functionality ))) isomorphism of that code in another programming language  ((( semantically and structurally equivalent ))).  The input is a c header file, containing macro definitions and structures, and the output is a portable Boo code / Common Language Runtime (CLR) rendition of that input, allieviating some of the manual labor of <a href="http://www.mono-project.com/Interop_with_Native_Libraries#Marshaling">Interop with Native Libraries</a> ((( redefinining structures in CLR and exposing macro definitions ))).  The additional enrichment is a built in binary serialization layer; something memory-oriented C code has "for free" via memcpy that does not exist in the managed CLR environment.
+This is a mere personal interprettation of where the line stands between programming & metaprogramming; at its heart and in spirit, metaprogramming is writing code about code; the particulars will have to be judged on a case by case basis.
+
+Vimp is a metaprogramming transformer.  It reads one piece of code ((( actually it relies upon LLVM's clang representation of a piece of code ))), and outputs an enriched ((( so said, because vimp layers in additional functionality ))) isomorphism of that code in another programming language  ((( semantically and structurally equivalent ))).  The input is a c header file, containing macro definitions and structures, and the output is a portable Boo code / Common Language Runtime (CLR) rendition of that input, allieviating some of the manual labor of <a href="http://www.mono-project.com/Interop_with_Native_Libraries#Marshaling">Interop with Native Libraries</a> ((( redefinining structures in CLR and exposing macro definitions ))).  The additional enrichment is a built in binary serialization layer; something memory-oriented C code has "for free" via memcpy that does not exist in the managed CLR environment.
 
 In the the building of Input#, vimp is the first step: linux defines how to talk to input devices ((( exposes a device's capabilities ))) in a c header file "input.h".  Vimp reads this file and creates managed types corresponding to its contents.  These basic structures are then used by high level code in Input#, aggregated and mixed together to build a top-level InputDevice object; an object describing a single input device and its capabilities.  
 
 <h2>Vimp</h2>
 
-Vimp, the project name, is a muxing of VoodooImport; its a <i>VoodooWarez</i> utility to <i>import</i> c structures into the CLR.  C code is parsed via LLVM's clang-cc c compiler, and the parsed AST tree (in XML) ((( along with the origins dependencies, and the origin's body of macro definitions ))) is used by vimp to generate "isomorphic" Boo code ((( which can then be compiled into a .NET/CLR Assembly ))).
+Vimp, the project name, is a muxing of VoodooImport; its a <i>VoodooWarez</i> utility to <i>import</i> c structures into the CLR.  C code is parsed via LLVM's clang-cc c compiler, and the parsed output is used by vimp to generate "isomorphic" Boo code ((( which can then be compiled into a .NET/CLR Assembly ))).  
 
 <tt style="white-space: pre-wrap;">  <b>isomorphism</b>
   
@@ -28,11 +30,11 @@ Vimp, the project name, is a muxing of VoodooImport; its a <i>VoodooWarez</i> ut
      preserves, in both directions, any structure under
      consideration.</tt>
 
-To fulfil isomorphism, the Boo code generated is a struct, layed out in sequential order, replicating the origin's c-struct's contents.  Additionally, to maintain the useful binary serialization of memcpy in c, the generated code provides serialization mechanisms for linear structures ((( pointers are presently not dereferenced, and cause generated code to lack serialization mechanisms ))).
+There are two facets of the input c header files which need mapping; the structures described in the c code, and the macro definitions used to define constants.  Vimp has two corresponding tools for each task; <i>Structurizer</i> transcribes structs into Boo, and <i>MacroEnumerizer</i> maps individual macro definitions into enum collections.  Boo code is generated via two techniques, programatic/imperative Boo abstract syntax tree (AST) construction, and template macros.
 
 <h3>Structurization</h3>
 
-C has structure definitions, which vimp outputs as Boo struct definitions.
+C has structure definitions, which are turned into clang AST records, which vimp reads to generate Boo struct definitions.
 
 With the following c code as input:
 
@@ -43,35 +45,7 @@ With the following c code as input:
   __s32 value;
 };</tt>
 
-Vimp's <i>Structurizer</i>, with that input, yields the following Boo translation:
-
-<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
-struct InputEvent(ISerializable):
-  Time as Timeval
-  Type as ushort
-  Code as ushort
-  Value as int</tt>
-
-<h3>Llvm</h3>
-
-Additionally, because of the magic of llvm ((( upon which vimp is hinged ))), we get the following depenency:
-
-<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
-struct Timeval(ISerializable):
-  TvSec as long
-  TvUsec as long </tt>
-
-Which has been automatically extracted from the "time.h" code:
-
-<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
-struct timeval {
-  __kernel_time_t         tv_sec;         /* seconds */
-  __kernel_suseconds_t    tv_usec;        /* microseconds */
-};</tt>
-
-Wow, how did this happen? Where did this get pulled from?  All that was specified when running vimp was "input.h".  Well, for this dependency loading, vimp thanks Llvm.  
-
-Vimp starts a "clang-cc --ast-print-xml" on its input.  Clang builds an abstract syntax tree (AST) for its input ((( "input.h" in this case ))), and its dependencies ((( including "time.h" for "input.h" ))), and prints the tree; this tree contains the complete record of objects used to compile the input.  Here's what our original "input.h" input_event structure looks like in the xml ast view:
+Clang produces this XML AST:
 
 <tt style="white-space:pre-wrap">&lt;Record id="_21B" file="f15" line="21" col="8" context="_2" name="input_event" type="_21C"&gt;
   &lt;Field id="_21D" file="f15" line="22" col="17" context="_21B" name="time" type="_6F"/&gt;
@@ -80,9 +54,51 @@ Vimp starts a "clang-cc --ast-print-xml" on its input.  Clang builds an abstract
   &lt;Field id="_220" file="f15" line="25" col="8" context="_21B" name="value" type="_222"/&gt;
 &lt;/Record&gt;</tt>
 
-We can see from this snippet of output, input_event contains four fields, named time, type, code and value.  Whenever Linux generates output for an input device, the output will have these four records, in that order.  Vimp's task is to turn these four records into Boo code.  Along the way, vimp is going to have to look up and understand the various "type" values for these four fields.
+That vimp's <i>Structurizer</i> uses to yield the following Boo translation:
 
-Also in the ast view output is the timeval dependency!  Here's the ast view of timeval, which clang-cc automatically reads from "time.h":
+<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
+struct InputEvent(ISerializable):
+  Time as Timeval
+  Type as ushort
+  Code as ushort
+  Value as int</tt>
+
+Although there are syntactic language differences, the base information is all conveyed: there is a linear structure, having four properties: a "timeval" named time, two unsigned 16 bit integers named type and code, and a signed integer called value.
+
+<h4>Code Generation Deep Dive</h4>
+
+Structurizers entry point is BuildStructs, which expects a clang-cc AST as input.  BuildStructs operates via a queue of needed structs, building the top item on the queue, and adding any dependencies to the end of the queue.  The queue is initially populated either by user provided list of types which need to be imported, or via BuildInitialNeeded, which looks at the Files section of the AST output, and enqueues all types originating from the source input file(s).  BuildStructs calls the BuildMember generator for each struct, which generates a Boo.Lang.Compiler.AST.StructDefinition for the struct, and generates struct fields BuildFields.  The resultant struct definitions are appended into the resultant Boo.Lang.Compiler.Ast.Module (which was either passed in initially, or created fresh), and comprises the output of BuildStruct.
+
+BuildFields is where most of the interesting action is: it takes individual fields from the clang record, and builds a Boo.Lang.Compiler.Ast.Field for each one.  A struct field can be a wide range of different types, and BuildField's goal is to handle the variations with aplomb.  BuildFields also feeds the "needed" queue: whenever it encounters a field witha type it cannot understand, it enqueues the type into the needed queue.
+
+Note that serialization is not covered.  Serialization was grafted in to the initial code late and murkies the otherwise fairly minimal code, and will be discussed later.
+
+<h3>Dependencies</h3>
+
+Because of the magic of llvm's clang ((( upon which vimp is hinged )))-- in this case clang-cc's AST output-- we get the following depenency as well:
+
+<tt style="white-space:pre-wrap">[StructLayout(LayoutKind.Sequential)]
+struct Timeval(ISerializable):
+  TvSec as long
+  TvUsec as long </tt>
+
+Which fulfill's InputEvent's Time field.  It has been automatically extracted from the dependant "time.h" code:
+
+<tt style="white-space:pre-wrap">struct timeval {
+  __kernel_time_t         tv_sec;         /* seconds */
+  __kernel_suseconds_t    tv_usec;        /* microseconds */
+};</tt>
+
+Wow, how did this happen? Where did this dependency get pulled from?  All that was specified when running vimp was "input.h".  Well, for this dependency loading, vimp thanks Llvm.  
+Structurizer starts a "clang-cc --ast-print-xml" on its input file(s).  Clang builds an abstract syntax tree (AST) for its input ((( "input.h" in this case ))), and its dependencies ((( including "time.h" for "input.h" ))), and prints the tree; this tree contains the complete record of objects that clang then uses to compile the input.  Here's what our original "input.h" input_event structure looks like in the xml ast view:
+
+We can see from this snippet of output, input_event contains four fields, named time, type, code and value.  Whenever Linux generates output for an input device, the output will have these four records, in that order.  Structurizer's task is to turn these four records into Boo code.  Along the way, vimp is going to have to look up and understand the various "type" values for these four fields.
+
+Three of the four fields resolve directly to primitive types; type, code, and value.  The first field, time, 
+
+
+
+Three of the fields resolve quickly to primitive types, but in the ast view output there is also a type _is also in the ast view output is the timeval dependency!  Here's the ast view of timeval, which clang-cc automatically reads from "time.h":
 
 <tt style="white-space:pre-wrap">&lt;Record id="_6E" file="f5" line="69" col="8" context="_2" name="timeval" type="_6F"&gt;
   &lt;Field id="_70" file="f5" line="71" col="14" context="_6E" name="tv_sec" type="_6D"/&gt;
@@ -346,10 +362,20 @@ StructSerializerProvider's provide one IGenericSerializer, for an ISerializable 
 
 LinearHelper serves as a central registry for ISerializerProviders and ISerializers.  If an IGenericSerializer for a particular type is needed, a FindSerializer can be issued to lookup its corresopnding ISerializer.
 
+<h2>Background</h2>
+
+Vimp, the project name, is a muxing of VoodooImport; its a <i>VoodooWarez</i> utility to <i>import</i> c structures into the CLR.  
+
+
+
 <h2>Future improvement</h2>
 
 <ul>
 <li>Break Serialization out of Structurizer; re-engineer as a third AST pipeline step.</li>
 <li>Structurizer port comments intact.</li>
 <li>Macro expression evaluation.</li>
+<li>Non linear structures have no serialization</li>
 </ul>
+
+
+<h2>Discussion</h2>
