@@ -10,13 +10,9 @@ class ObjectInstantiationEventArgs (EventArgs):
 	
 	[Property(NewObject)]
 	newObject as object
-	[Property(FileObjectStream)]
-	file as FileObjectStream
 	
-
-	def constructor(o,sender as FileObjectStream):
+	def constructor(o):
 		self.newObject = o
-		self.file = sender
 
 
 class FileObjectStream:
@@ -124,7 +120,7 @@ class FileObjectStream:
 		start = fsm.BufferPosition - residual # starting place including prefill
 		while countDown >= fsm.numBytes:
 			obj= fsm.Serializer.Deserialize(fsm.Buffers[fsm.BuffersOffset],start)
-			objEvent = ObjectInstantiationEventArgs(obj,fsm) as ObjectInstantiationEventArgs
+			objEvent = ObjectInstantiationEventArgs(obj)
 			fsm.OnNewObjectInstantiation(self,objEvent)
 			countDown -= fsm.NumBytes
 			start += fsm.NumBytes
