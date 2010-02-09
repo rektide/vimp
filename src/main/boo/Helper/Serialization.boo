@@ -100,7 +100,10 @@ class StructSerializer[of T(ISerializable,constructor,class)] (IGenericSerialize
 		return (o as T).Serialize()
 	
 	def Deserialize(bs as (byte), start as int) as object:
-		return GenericDeserialize(bs,start)
+		o = Activator.CreateInstance(typeof(T))
+		(o as duck).Deserialize(bs,start)
+		return o
+		
 
 
 abstract class NotSupportedSerializer(ISerializer):
